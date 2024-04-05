@@ -18,3 +18,5 @@ dependencies:
   - gcsfs
   - zarr
   - xhistogram
+  - pip:
+    - ray
