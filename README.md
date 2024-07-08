@@ -1,6 +1,6 @@
 # DownClim - Downscale Climate Projections
 Sylvain Schmitt -
-Apr 12, 2024
+Jul 8, 2024
 
 - [Installation](#installation)
 - [Credentials](#credentials)
@@ -8,7 +8,6 @@ Apr 12, 2024
 - [Configuration](#configuration)
 - [Workflow](#workflow)
 - [Data](#data)
-- [Development](#development)
 
 [`snakemake`](https://github.com/sylvainschmitt/snakemake_singularity)
 workflow to downscale climate projections.
@@ -130,9 +129,6 @@ ordered by steps:
   - base_eval: climate product for the evaluation (CHELSA V2 “chelsa2” ,
     WorldClim V2 “worldclim2”, CRU TS V4 “cru4”, currently only chelsa2
     is available).
-- Ensemble
-  - ens_method: ensemble method to be used (simple multi-model average
-    “sma”, bayesian model average “bma”, currently none implemented).
 
 # Workflow
 
@@ -155,6 +151,26 @@ Python script to get area limits with GADM if country or continent.
   [`xarray.yml`](https://github.com/sylvainschmitt/DownClim/blob/dev/envs/xarray.yml)
 
 Python script to download, crop, adjust and aggregate CHELSA V2.1.
+
+### [get_chirps](https://github.com/sylvainschmitt/DownClim/blob/dev/rules/get_chirps.py)
+
+- Data: [CHIRPS](https://www.chc.ucsb.edu/data/chirps)
+- Script:
+  [`get_chirps.py`](https://github.com/sylvainschmitt/DownClim/blob/dev/scripts/get_chirps.py)
+- Environment:
+  [`xarray.yml`](https://github.com/sylvainschmitt/DownClim/blob/dev/envs/xarray.yml)
+
+Python script to download, crop, adjust and aggregate CHIRPS.
+
+### [get_gshtd](https://github.com/sylvainschmitt/DownClim/blob/dev/rules/get_gshtd)
+
+- Data: [GSHTD](https://gee-community-catalog.org/projects/gshtd/)
+- Script:
+  [`get_gshtd.py`](https://github.com/sylvainschmitt/DownClim/blob/dev/scripts/get_gshtd)
+- Environment:
+  [`xarray.yml`](https://github.com/sylvainschmitt/DownClim/blob/dev/envs/xarray.yml)
+
+Python script to download, crop, adjust and aggregate GSHTD.
 
 ### [get_cordex](https://github.com/sylvainschmitt/DownClim/blob/dev/rules/get_cordex.py)
 
@@ -221,6 +237,28 @@ before and after downscaling.
 
 Merge all evaluations.
 
+### [map_bias](https://github.com/sylvainschmitt/DownClim/blob/dev/rules/map_bias.py)
+
+- Script:
+  [`map_bias.py`](https://github.com/sylvainschmitt/DownClim/blob/dev/scripts/map_bias.py)
+- Environment:
+  [`xarray.yml`](https://github.com/sylvainschmitt/DownClim/blob/dev/envs/xarray.yml)
+
+Compute bias maps for the downscaled projections.
+
+### [merge_bias](https://github.com/sylvainschmitt/DownClim/blob/dev/rules/merge_bias.py)
+
+Merge all bias maps.
+
+### [get_tmf](https://github.com/sylvainschmitt/DownClim/blob/dev/rules/get_tmf.py)
+
+- Script:
+  [`get_tmf.py`](https://github.com/sylvainschmitt/DownClim/blob/dev/scripts/get_tmf.py)
+- Environment:
+  [`xarray.yml`](https://github.com/sylvainschmitt/DownClim/blob/dev/envs/xarray.yml)
+
+Project Tropical Moist Forest climatic niche in the projection period.
+
 # Data
 
 ## Baselines
@@ -235,21 +273,28 @@ Forest, Snow and Landscape Research WSL. It is built to provide free
 access to high resolution climate data for research and application, and
 is constantly updated and refined.*
 
-[**WorldClim 2.1**](https://www.worldclim.org/data/worldclim21.html)**:
-1km spatial resolution climate surfaces for global land areas**
+[**CHIRPS**](https://www.chc.ucsb.edu/data/chirps)**: Rainfall Estimates
+from Rain Gauge and Satellite Observations**
 
-*WorldClim is a database of high spatial resolution global weather and
-climate data. These data can be used for mapping and spatial modeling.
-The data are provided for use in research and related activities.*
+*Climate Hazards Group InfraRed Precipitation with Station data (CHIRPS)
+is a 35+ year quasi-global rainfall data set. Spanning 50°S-50°N (and
+all longitudes) and ranging from 1981 to near-present, CHIRPS
+incorporates our in-house climatology, CHPclim, 0.05° resolution
+satellite imagery, and in-situ station data to create gridded rainfall
+time series for trend analysis and seasonal drought monitoring.*
 
-[**CRU TS v. 4.07**](https://crudata.uea.ac.uk/cru/data/hrg/)**: monthly
-high-resolution gridded multivariate climate dataset**
+[**GSHTD**](https://gee-community-catalog.org/projects/gshtd/)**: Global
+Seamless High-resolution Temperature Dataset**
 
-*CRU TS (Climatic Research Unit gridded Time Series) is a widely used
-climate dataset on a 0.5° latitude by 0.5° longitude grid over all land
-domains of the world except Antarctica. It is derived by the
-interpolation of monthly climate anomalies from extensive networks of
-weather station observations.*
+*The Global Seamless High-resolution Temperature Dataset (GSHTD)
+presented in this study offers a comprehensive and valuable resource for
+researchers across various fields. Covering the period from 2001 to
+2020, this dataset focuses on land surface temperature (Ts) and
+near-surface air temperature (Ta). A unique feature of GSHTD is its
+incorporation of seven types of temperature data, including clear-sky
+daytime and nighttime Ts, all-sky daytime and nighttime Ts, and mean,
+maximum, and minimum Ta. Notably, the dataset achieves global coverage
+with an impressive 30 arcsecond or 1km spatial resolution.*
 
 ## Projections
 
@@ -268,14 +313,3 @@ Downscaling Experiment**
 *The CORDEX vision is to advance and coordinate the science and
 application of regional climate downscaling through global
 partnerships.*
-
-# Development
-
-First create or update the `dev-dc` mamba environment with required
-libraries:
-
-``` bash
-mamba env create -f envs/dev-dc.yml # init
-mamba env update -f envs/dev-dc.yml --prune # update
-mamab activate dev-dc
-```

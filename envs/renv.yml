@@ -1,6 +1,0 @@
-name: dev-dc
-channels:
-  - conda-forge
-dependencies:
-  - python=3.10
-  - r-tidyverse 
