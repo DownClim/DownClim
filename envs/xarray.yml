@@ -1,11 +1,23 @@
 name: xarray
 channels:
   - conda-forge
-  - defaults
 dependencies:
-  - fsspec
+  - python=3.10
+  - cffi
+  - pandas
+  - geopandas
   - xarray
+  - rioxarray
   - netCDF4
   - bottleneck
-  - cyordereddict
-  - geopandas
+  - esgf-pyclient
+  - yaml
+  - dask
+  - xesmf
+  - myproxyclient
+  - gcsfs
+  - zarr
+  - xhistogram
+  - earthengine-api
+  - xee
+  

@@ -1,7 +1,0 @@
-baseline: "CHELSA V2.1"
-cordex_years: ["1980-2100"]
-hist_years: ["1980-2005"]
-eval_years: ["2006-2019"]
-proj_years: ["2071-2100", "2041-2070"]
-variables: ["tas", "tasmin", "tasmax", "pr"]
-log10_eval_pts: 4

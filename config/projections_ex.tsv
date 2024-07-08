@@ -1,0 +1,3 @@
+project	domain	institute	model	experiment	ensemble	rcm	downscaling
+CORDEX	AUS-22	CLMcom-HZG	MOHC-HadGEM2-ES	rcp26	r1i1p1	CCLM5-0-15	v1
+CMIP6	world	MRI	MRI-ESM2-0	ssp126	r1i1p1f1	none	none

@@ -1,21 +1,32 @@
 rule downscale_bc:
     input:
-        proj=expand("results/cordex/raw/{country}_{domain}_{gcm}_{rcm}_{rcp}_{years}.nc",
-                     years=config["cordex_years"], allow_missing = True),
-        base="results/chelsa/raw/{country}_CHELSA_1981-2010_V.2.1.nc"
+        proj_future="results/projections/_{project}_{domain}_{institute}_{model}_{experiment}_{ensemble}_{rcm}_{downscaling}_{base}_done.txt",
+        proj_hist="results/projections/_{project}_{domain}_{institute}_{model}_{experiment}_{ensemble}_{rcm}_{downscaling}_{base}_done.txt",
+        base_hist="results/baselines/{area}_{base}_{aggregation}_{period_hist}.nc"
     output:
-        "results/cordex/downscaled/{country}_{domain}_{gcm}_{rcm}_{rcp}_{period_proj}_{period_base}.nc"
+        "results/downscaled/{area}_{project}_{domain}_{institute}_{model}_{experiment}_{ensemble}_{rcm}_{downscaling}_{base}_{aggregation}_{period_future}_{period_hist}_bc.nc"
     log:
-        "results/logs/downscale_bc_{country}_{domain}_{gcm}_{rcm}_{rcp}_{period_proj}_{period_base}.log"
+        "results/logs/downscale_bc_{area}_{project}_{domain}_{institute}_{model}_{experiment}_{ensemble}_{rcm}_{downscaling}_{base}_{aggregation}_{period_future}_{period_hist}.log"
     benchmark:
-        "results/benchmarks/downscale_bc_{country}_{domain}_{gcm}_{rcm}_{rcp}_{period_proj}_{period_base}.benchmark.txt"
+        "results/benchmarks/downscale_bc_{area}_{project}_{domain}_{institute}_{model}_{experiment}_{ensemble}_{rcm}_{downscaling}_{base}_{aggregation}_{period_future}_{period_hist}.benchmark.txt"
     threads: 1
     resources:
         mem_mb=1000
     conda:
         "../envs/xarray.yml"
     params:
-        period_base="{period_base}",
-        period_proj="{period_proj}"
+        area="{area}",
+        project="{project}",
+        domain="{domain}",
+        institute="{institute}",
+        model="{model}",
+        experiment="{experiment}",
+        ensemble="{ensemble}",
+        rcm="{rcm}",
+        downscaling="{downscaling}",
+        base="{base}",
+        aggregation="{aggregation}",
+        period_hist="{period_hist}",
+        period_future="{period_future}"
     script:
       "../scripts/downscale_bc.py"

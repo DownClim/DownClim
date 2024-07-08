@@ -1,19 +1,13 @@
 # DownClim - Downscale Climate Projections
 Sylvain Schmitt -
-Dec 6, 2023
+Jul 8, 2024
 
 - [Installation](#installation)
 - [Credentials](#credentials)
 - [Usage](#usage)
-- [Config](#config)
+- [Configuration](#configuration)
 - [Workflow](#workflow)
-  - [Area](#area)
-  - [Baseline](#baseline)
-  - [Projection](#projection)
-  - [Downscaling](#downscaling)
-  - [Evaluation](#evaluation)
 - [Data](#data)
-- [Dev](#dev)
 
 [`snakemake`](https://github.com/sylvainschmitt/snakemake_singularity)
 workflow to downscale climate projections.
@@ -22,12 +16,17 @@ workflow to downscale climate projections.
 
 [![](https://www.repostatus.org/badges/latest/wip.svg)](https://www.repostatus.org/#wip)
 
-Project Status: WIP – Initial development is in progress, but there has
-not yet been a stable, usable release suitable for the public.
-
 </div>
 
-**Description.**
+The purpose of `DownClim` is to offer a tool for regional and national
+climate projections including the mechanistic ‘dynamic’ downscaling of
+the CORDEX initiative. `DownClim` is opposed to the direct statistical
+downscaling of global climate projections found in WorldClim and CHELSA.
+The approach is justified by an improvement in regional projections of
+CORDEX compared to CMIP, although it can increase uncertainty and
+sometimes be less reliable. The tool is an automated `snakemake`
+workflow easily reproducible and scalable associated to `conda`
+environments for enhance reproducibility and portability.
 
 ![Workflow.](dag/dag.svg)
 
@@ -56,8 +55,6 @@ snakemake -np
 
 # Credentials
 
-**To further update following the `get_cordex` rule with `pyesgf`.**
-
 Data are retrieve from the [Institut Pierre-Simon Laplace
 node](https://esgf-node.ipsl.upmc.fr/search/cordex-ipsl/). You need
 first to [create an
@@ -66,108 +63,205 @@ on this page ([create
 account](https://esgf-node.ipsl.upmc.fr/user/add/?next=http://esgf-node.ipsl.upmc.fr/search/cordex-ipsl/)
 link at corner right).
 
-Then you’ll need to register credentials locally to use the workflow. A
-[help
-page](https://esgf.github.io/esgf-user-support/user_guide.html?highlight=credentials%20pem#access-data-with-the-command-line-via-opendap)
-is available. In linux, you need `myproxy-logon` installed and to run
-this command line (with your user name):
+Then you’ll need to register credentials locally to use the workflow.
+For that use a credentials_esgf yaml file reported in config.yml with
+keys openid and pwd. For example using bash in linux:
 
 ``` bash
-myproxy-logon -sesgf-node.ipsl.upmc.fr -l {user_name} -b -T -t 72 -o ~/.esg/credentials.pem
-```
-
-To run the workflow on a cluster, you can simply copy your local
-credentials to the cluster. For instance:
-
-``` bash
-cp ~/.esg/credentials.pem /my_cluster/
+openid=https://esgf-node.ipsl.upmc.fr/esgf-idp/openid/{user}
+pwd={pwd}
+echo -e "openid: $openid\npwd: $pwd" > config/credentials_esgf.yml
 ```
 
 # Usage
 
 ``` bash
-module load bioinfo/Snakemake/7.20.0 # for test on nod depending on your HPC
+module load bioinfo/Snakemake/7.20.0 # for test, adapt to your HPC
 snakemake -np # dry run
 snakemake --dag | dot -Tsvg > dag/dag.svg # dag
 snakemake -j 1 --resources mem_mb=10000 # local run (test)
-sbatch job_muse.sh # HPC run with slurm
+sbatch job.sh # HPC run with slurm
 ```
 
-# Config
+# Configuration
+
+Different configuration parameters to set in
+[`config/config.yml`](https://github.com/sylvainschmitt/DownClim/blob/dev/config/config_ex.yml)
+ordered by steps:
+
+- Area
+  - area: names of the area to work with, *e.g.* New-Caledonia.
+- Time
+  - time_frequency: time frequency of data (month “mon”, day “day” or
+    x-hourly “3hr”), currently only “mon” is available.
+  - hist_years: historical period on which to adjust projections, *e.g.*
+    1980-2005.
+  - eval_years: evaluation period on which to evaluate projections,
+    *e.g.* 2006-2019.
+  - proj_years: projection period on which to downscale the projections,
+    *e.g.* 2071-2100.
+- Variables
+  - variables: used variables, *e.g.* temperature at surface ’tas”,
+    minimum temperature “tasmin”, maximum temperature “tasmax”, and
+    precipitations “pr” (currently only-one availables).
+- Baseline
+  - baseline: climate product for the baseline (CHELSA V2 “chelsa2” ,
+    WorldClim V2 “worldclim2”, CRU TS V4 “cru4”, currently only chelsa2
+    is available).
+  - base_years: years to be retrieved from the baseline, *e.g.*
+    1980-2019.
+- Projection
+  - projections: path to the file defining the requested projections on
+    ESGF. An example can be found in
+    [config/projections_ex.tsv](https://github.com/sylvainschmitt/DownClim/blob/dev/config/projections_ex.tsv).
+    [config/list_projections.py](https://github.com/sylvainschmitt/DownClim/blob/dev/config/list_projections.py)
+    helps generating the list.
+  - domains: path to the file definingthe CORDEX domains corresponding
+    to each country. An helper script to generate it should be added.
+  - esgf_credentials: path to the file defining the user credentials on
+    esgf, see credentials above.
+- Downscaling
+  - aggregation: time aggregation before downscaling, currently only
+    “monthly-means” are available.
+  - ds_method: downscaling method to be used (bias correction “bc”,
+    quantile-based “qt”, currently only bc is available).
+- Evaluation
+  - base_eval: climate product for the evaluation (CHELSA V2 “chelsa2” ,
+    WorldClim V2 “worldclim2”, CRU TS V4 “cru4”, currently only chelsa2
+    is available).
 
 # Workflow
 
-## Area
+### [get_area](https://github.com/sylvainschmitt/DownClim/blob/dev/rules/get_area.py)
 
-### [get_area](https://github.com/sylvainschmitt/DownClim/blob/main/rules/get_area.py)
-
+- Data: [GADM](https://gadm.org/)
 - Script:
-  [`get_area.py`](https://github.com/sylvainschmitt/DownClim/blob/main/scripts/get_area.py)
+  [`get_area.py`](https://github.com/sylvainschmitt/DownClim/blob/dev/scripts/get_area.py)
 - Environment:
-  [`gadm.yml`](https://github.com/sylvainschmitt/DownClim/blob/main/envs/gadm.yml)
+  [`gadm.yml`](https://github.com/sylvainschmitt/DownClim/blob/dev/envs/gadm.yml)
 
-Python script to get area limits with GADM if country or continent, or
-based simply on a user-defined bounding-box. Sampling points are further
-defined on the land for evaluation.
+Python script to get area limits with GADM if country or continent.
 
-## Baseline
+### [get_chelsa2](https://github.com/sylvainschmitt/DownClim/blob/dev/rules/get_chelsa2.py)
 
-### [get_chelsa](https://github.com/sylvainschmitt/DownClim/blob/main/rules/get_chelsa.py)
-
+- Data: [CHELSA V2.1](https://chelsa-climate.org/)
 - Script:
-  [`get_chelsa.py`](https://github.com/sylvainschmitt/DownClim/blob/main/scripts/get_chelsa.py)
+  [`get_chelsa2.py`](https://github.com/sylvainschmitt/DownClim/blob/dev/scripts/get_chelsa2.py)
 - Environment:
-  [`xarray.yml`](https://github.com/sylvainschmitt/DownClim/blob/main/envs/xarray.yml)
+  [`xarray.yml`](https://github.com/sylvainschmitt/DownClim/blob/dev/envs/xarray.yml)
 
-Python script to download, crop, adjust CHELSA monthly variables.
+Python script to download, crop, adjust and aggregate CHELSA V2.1.
 
-## Projection
+### [get_chirps](https://github.com/sylvainschmitt/DownClim/blob/dev/rules/get_chirps.py)
 
-### [get_cordex](https://github.com/sylvainschmitt/DownClim/blob/main/rules/get_cordex.py)
-
+- Data: [CHIRPS](https://www.chc.ucsb.edu/data/chirps)
 - Script:
-  [`get_cordex.py`](https://github.com/sylvainschmitt/DownClim/blob/main/scripts/get_cordex.py)
+  [`get_chirps.py`](https://github.com/sylvainschmitt/DownClim/blob/dev/scripts/get_chirps.py)
 - Environment:
-  [`xarray.yml`](https://github.com/sylvainschmitt/DownClim/blob/main/envs/xarray.yml)
+  [`xarray.yml`](https://github.com/sylvainschmitt/DownClim/blob/dev/envs/xarray.yml)
 
-Python script to download, crop, reproject, and adjust CORDEX monthly
-variables.
+Python script to download, crop, adjust and aggregate CHIRPS.
 
-## Downscaling
+### [get_gshtd](https://github.com/sylvainschmitt/DownClim/blob/dev/rules/get_gshtd)
 
-### [downscale_bc](https://github.com/sylvainschmitt/DownClim/blob/main/rules/downscale_bc.py)
+- Data: [GSHTD](https://gee-community-catalog.org/projects/gshtd/)
+- Script:
+  [`get_gshtd.py`](https://github.com/sylvainschmitt/DownClim/blob/dev/scripts/get_gshtd)
+- Environment:
+  [`xarray.yml`](https://github.com/sylvainschmitt/DownClim/blob/dev/envs/xarray.yml)
+
+Python script to download, crop, adjust and aggregate GSHTD.
+
+### [get_cordex](https://github.com/sylvainschmitt/DownClim/blob/dev/rules/get_cordex.py)
+
+- Data: [CORDEX
+  projections](https://esgf-node.ipsl.upmc.fr/search/cordex-ipsl/)
+- Script:
+  [`get_cordex.py`](https://github.com/sylvainschmitt/DownClim/blob/dev/scripts/get_cordex2.py)
+- Environment:
+  [`xarray.yml`](https://github.com/sylvainschmitt/DownClim/blob/dev/envs/xarray.yml)
+
+Python script to download, crop, reproject, adjust, and aggregate CORDEX
+projections.
+
+### [get_cmip6](https://github.com/sylvainschmitt/DownClim/blob/dev/rules/get_cmip6.py)
+
+- Data: [CMIP6
+  projections](https://console.cloud.google.com/marketplace/product/noaa-public/cmip6?)
+- Script:
+  [`get_cmip6.py`](https://github.com/sylvainschmitt/DownClim/blob/dev/scripts/get_cmip6x.py)
+- Environment:
+  [`xarray.yml`](https://github.com/sylvainschmitt/DownClim/blob/dev/envs/xarray.yml)
+
+Python script to download, crop, reproject, adjust, and aggregate CMIP6
+projections.
+
+### [downscale_bc](https://github.com/sylvainschmitt/DownClim/blob/dev/rules/downscale_bc.py)
 
 - Script:
-  [`downscale_bc.py`](https://github.com/sylvainschmitt/DownClim/blob/main/scripts/downscale_bc.py)
-- Environment: *to be defined*
+  [`downscale_bc.py`](https://github.com/sylvainschmitt/DownClim/blob/dev/scripts/downscale_bc.py)
+- Environment:
+  [`xarray.yml`](https://github.com/sylvainschmitt/DownClim/blob/dev/envs/xarray.yml)
 
 Python script to compute downscaled projection with bias correction
-(delta or change-factor method). Baseline and projections are summarised
-by means across an historical and a projected period (e.g. monthly means
-over 30 years). Anomalies between historical and projected periods are
-computed for the projections. Anomalies are interpolated and added to
-the historical period of the baseline.
+(delta or change-factor method). Anomalies between historical and
+projected periods are computed for the projections. Anomalies are
+interpolated and added to the historical period of the baseline.
 
-## Evaluation
-
-### [evaluate_bc](https://github.com/sylvainschmitt/DownClim/blob/main/rules/evaluate_bc.py)
+### [hist_base](https://github.com/sylvainschmitt/DownClim/blob/dev/rules/hist_base.py)
 
 - Script:
-  [`evaluate_bc.py`](https://github.com/sylvainschmitt/DownClim/blob/main/scripts/evaluate_bc.py)
-- Environment: *to be defined*
+  [`hist_base.py`](https://github.com/sylvainschmitt/DownClim/blob/dev/scripts/hist_base.py)
+- Environment:
+  [`xarray.yml`](https://github.com/sylvainschmitt/DownClim/blob/dev/envs/xarray.yml)
 
-Python script to evaluate downscaled versus raw projection against a
-baseline on the defined evaluation period for bias correctino
-downscaling.
+Extract histograms of values for land of the baseline. Similarly,
+[hist_proj](https://github.com/sylvainschmitt/DownClim/blob/dev/rules/hist_proj.py)
+extract histograms for the projection before and after downscaling.
+
+### [merge_hist](https://github.com/sylvainschmitt/DownClim/blob/dev/rules/merge_hist.py)
+
+Merge all histograms.
+
+### [eval_proj](https://github.com/sylvainschmitt/DownClim/blob/dev/rules/eval_proj.py)
+
+- Script:
+  [`eval_proj.py`](https://github.com/sylvainschmitt/DownClim/blob/dev/scripts/eval_proj.py)
+- Environment:
+  [`xarray.yml`](https://github.com/sylvainschmitt/DownClim/blob/dev/envs/xarray.yml)
+
+Compute evaluation metrics (CC, RMSEP, SDE, Bias) for the projection
+before and after downscaling.
+
+### [merge_eval](https://github.com/sylvainschmitt/DownClim/blob/dev/rules/merge_eval.py)
+
+Merge all evaluations.
+
+### [map_bias](https://github.com/sylvainschmitt/DownClim/blob/dev/rules/map_bias.py)
+
+- Script:
+  [`map_bias.py`](https://github.com/sylvainschmitt/DownClim/blob/dev/scripts/map_bias.py)
+- Environment:
+  [`xarray.yml`](https://github.com/sylvainschmitt/DownClim/blob/dev/envs/xarray.yml)
+
+Compute bias maps for the downscaled projections.
+
+### [merge_bias](https://github.com/sylvainschmitt/DownClim/blob/dev/rules/merge_bias.py)
+
+Merge all bias maps.
+
+### [get_tmf](https://github.com/sylvainschmitt/DownClim/blob/dev/rules/get_tmf.py)
+
+- Script:
+  [`get_tmf.py`](https://github.com/sylvainschmitt/DownClim/blob/dev/scripts/get_tmf.py)
+- Environment:
+  [`xarray.yml`](https://github.com/sylvainschmitt/DownClim/blob/dev/envs/xarray.yml)
+
+Project Tropical Moist Forest climatic niche in the projection period.
 
 # Data
 
-[**CORDEX**](https://cordex.org/)**: Coordinated Regional Climate
-Downscaling Experiment**
-
-*The CORDEX vision is to advance and coordinate the science and
-application of regional climate downscaling through global
-partnerships.*
+## Baselines
 
 [**CHELSA V2.1.1**](https://chelsa-climate.org/)**: Climatologies at
 high resolution for the earth’s land surface areas**
@@ -179,6 +273,43 @@ Forest, Snow and Landscape Research WSL. It is built to provide free
 access to high resolution climate data for research and application, and
 is constantly updated and refined.*
 
-# Dev
+[**CHIRPS**](https://www.chc.ucsb.edu/data/chirps)**: Rainfall Estimates
+from Rain Gauge and Satellite Observations**
 
-**Develop how-to dev with envs/dev.yml and mamba.**
+*Climate Hazards Group InfraRed Precipitation with Station data (CHIRPS)
+is a 35+ year quasi-global rainfall data set. Spanning 50°S-50°N (and
+all longitudes) and ranging from 1981 to near-present, CHIRPS
+incorporates our in-house climatology, CHPclim, 0.05° resolution
+satellite imagery, and in-situ station data to create gridded rainfall
+time series for trend analysis and seasonal drought monitoring.*
+
+[**GSHTD**](https://gee-community-catalog.org/projects/gshtd/)**: Global
+Seamless High-resolution Temperature Dataset**
+
+*The Global Seamless High-resolution Temperature Dataset (GSHTD)
+presented in this study offers a comprehensive and valuable resource for
+researchers across various fields. Covering the period from 2001 to
+2020, this dataset focuses on land surface temperature (Ts) and
+near-surface air temperature (Ta). A unique feature of GSHTD is its
+incorporation of seven types of temperature data, including clear-sky
+daytime and nighttime Ts, all-sky daytime and nighttime Ts, and mean,
+maximum, and minimum Ta. Notably, the dataset achieves global coverage
+with an impressive 30 arcsecond or 1km spatial resolution.*
+
+## Projections
+
+[**CMIP**](https://wcrp-cmip.org/)**: Coupled Model Intercomparison
+Project**
+
+*CMIP is a project of the World Climate Research Programme (WCRP)
+providing climate projections to understand past, present and future
+climate changes. CMIP and its associated data infrastructure have become
+essential to the Intergovernmental Panel on Climate Change (IPCC) and
+other international and national climate assessments.*
+
+[**CORDEX**](https://cordex.org/)**: Coordinated Regional Climate
+Downscaling Experiment**
+
+*The CORDEX vision is to advance and coordinate the science and
+application of regional climate downscaling through global
+partnerships.*

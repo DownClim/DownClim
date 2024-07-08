@@ -1,0 +1,28 @@
+# Area
+area: ["New-Caledonia"]
+proj_crs: "default"
+
+# Time
+time_frequency: "mon"
+hist_years: ["1980-2005"]
+eval_years: ["2006-2019"]
+proj_years: ["2071-2100"]
+
+# Variables
+variables: ["tas", "tasmin", "tasmax", "pr"]
+
+# Baseline
+baseline: "chelsa2"
+base_years: "2004-2007" # 2019 is available for all except pr !!!
+
+# Projection
+projections: "config/projections_dag.tsv"
+domains: "config/domains.tsv"
+esgf_credential: "config/credentials_esgf.yml"
+
+# Downscaling
+aggregation: "monthly-means"
+ds_method: "bc"
+
+# Evaluation
+base_eval: ["chirps"]
