@@ -31,5 +31,9 @@ achille
 config/credentials_esgf.yml
 test.tsv
 results0
-
-/.quarto/
+# snakemake
+rules/
+# build
+build/
+*egg-info
+*pyc

@@ -22,7 +22,7 @@ dependencies:
   - nctoolkit
   - cfchecker
   - dask
-  - r-tidyverse 
+  - r-tidyverse
   - salem
   - gcsfs=2022.7.1
   - zarr
@@ -32,5 +32,5 @@ dependencies:
   - s3fs
   - earthengine-api
   - xee
-  - pip: 
-    - pyet
+  - pip:
+      - pyet

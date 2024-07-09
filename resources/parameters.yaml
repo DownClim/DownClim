@@ -1,0 +1,30 @@
+config:
+  aois: ["New-Caledonia", "Côte-d'Ivoire", "French-Guiana"]
+  time_frequency: "mon"
+  variables: ["tas", "tasmin", "tasmax", "pr"]
+  baseline: "chelsa2"
+  baseline_years: "1980-2018" # 2019 is available for all except pr !!!
+  chunks: { "time": 1, "lat": 1000, "lon": 1000 }
+
+resources:
+  threads: 4
+  mem_mb: 10000
+
+access:
+  esgf_credential: "config/credentials_esgf.yml"
+
+historical:
+  hist_years: ["1980-2005"]
+
+evaluation:
+  base_eval: ["chirps", "gshtd", "chelsa2"]
+  eval_years: ["2006-2019"]
+
+downscaling:
+  aggregation: "monthly-means"
+  ds_method: "bc"
+
+projections:
+  projections_ddb: "config/projections_all.tsv"
+  domains_ddb: "config/domains.tsv"
+  proj_years: ["2071-2100"]
