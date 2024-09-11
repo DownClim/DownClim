@@ -36,4 +36,6 @@ rules/
 # build
 build/
 *egg-info
-*pyc
+*pyc*
+# version
+src/downclim/_version.py

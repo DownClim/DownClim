@@ -4,7 +4,7 @@ from collections.abc import Iterable
 
 import pandas as pd
 
-from .getters.connectors import connect_to_esgf
+from .getters.connectors import connect_to_esgf, esgf_url
 
 
 # cordex
@@ -16,15 +16,17 @@ def get_cordex_projections(
 ) -> pd.DataFrame:
     ctx = connect_to_esgf(
         {
+            "project": "CORDEX",
             "domain": domains,
-            "drivingmodel": "*",
-            "rcp": experiments,
+            "driving_model": "*",
+            "experiment": experiments,
             "time_frequency": time_frequency,
-            "var": variables,
-        }
+            "variable": variables,
+        },
+        esgf_credential="config/credentials_esgf.yml",
+        server=esgf_url,
     )
-    results = ctx.search()
-    datasets = [res.dataset_id for res in results]
+    datasets = [res.dataset_id for res in ctx.search()]
     df_dataset = pd.DataFrame({"dataset": datasets})
     df_dataset[["dataset", "datanode"]] = df_dataset["dataset"].str.split(
         "|", expand=True
@@ -46,18 +48,7 @@ def get_cordex_projections(
         ]
     ] = df_dataset["dataset"].str.split(".", expand=True)
     df_dataset.project = df_dataset.project.str.upper()
-    return df_dataset[
-        [
-            "project",
-            "domain",
-            "institute",
-            "model",
-            "experiment",
-            "ensemble",
-            "rcm",
-            "downscaling",
-        ]
-    ].drop_duplicates()
+    return df_dataset.drop_duplicates()
 
 
 def get_cmip6_projections(
@@ -67,7 +58,11 @@ def get_cmip6_projections(
     # cmip6
     ## list ScenarioMIP
     df_ta = df_dataset.query(
-        "activity_id == 'ScenarioMIP' & table_id == 'Amon' & variable_id == @variables & experiment_id == @experiments & member_id == 'r1i1p1f1'"
+        ###f"""activity_id == '{activity}' &
+        ###table_id == '{table}' &
+        ###variable_id == @{vars} &
+        ###experiment_id == @{experiments} &
+        ###member_id == '{members}'"""
     )
     ## check vars in ScenarioMIP
     df_ta["sim"] = df_ta["institution_id"] + "_" + df_ta["source_id"]

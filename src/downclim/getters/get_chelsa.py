@@ -3,21 +3,22 @@ from __future__ import annotations
 import datetime
 import shutil
 import warnings
-from collections.abc import Iterable
 from pathlib import Path
 from urllib.error import URLError
 from urllib.request import urlopen
 
-import geopandas
+import geopandas as gpd
 import multiprocess as mp
 import pandas as pd
 import rioxarray as rio
 import xarray as xr
 
-from .connectors import chelsa_url
+from .connectors import data_urls
 from .get_aoi import get_aois_informations
 from .utils import (
+    Frequency,
     add_offsets,
+    get_frequency,
     get_monthly_climatology,
     scale_factors,
     split_period,
@@ -31,8 +32,7 @@ def _get_chelsa_one_file(
     var: str,
     month: int,
     year: int,
-    time_freq: str = "monthly",
-    base_url: str = chelsa_url,
+    time_freq: Frequency,
 ) -> dict:
     """
     Internal function to get CHELSA data for a given year, a given month and given variables, over a list of areas of interest.
@@ -47,7 +47,14 @@ def _get_chelsa_one_file(
     """
 
     chelsa_files = {}
-    url = f"{base_url}{time_freq}/{var}/CHELSA_{var}_{month:02d}_{year}_V.2.1.tif"
+    base_url = data_urls["chelsa"]
+
+    if time_freq == Frequency.MONTHLY:
+        url = f"{base_url}/monthly/{var}/CHELSA_{var}_{month:02d}_{year}_V.2.1.tif"
+    else:
+        msg = "Only monthly time frequency is available for retrieving CHELSA data."
+        raise Exception(msg)
+
     try:
         urlopen(url)
     except URLError as e:
@@ -55,11 +62,8 @@ def _get_chelsa_one_file(
             f"Page {url} not found, please check the name of the variable or the year."
         )
         raise Exception(msg) from e
-    ds = (
-        rio.open_rasterio(url, decode_coords="all")
-        .to_dataset("band")
-        .rename_vars({1: var})
-    )
+
+    ds = rio.open_rasterio(url).to_dataset("band").rename_vars({1: var})
     for aoi_name, aoi_bounds in zip(aois_names, aois_bounds, strict=False):
         chelsa_files[aoi_name] = ds.rio.clip_box(
             minx=aoi_bounds.minx[0],
@@ -70,139 +74,144 @@ def _get_chelsa_one_file(
     return chelsa_files
 
 
-def get_chelsa_year(
-    aois: list[geopandas.GeoDataFrame],
+def _get_chelsa_year(
+    aois_names: list[str],
+    aois_bounds: list[pd.DataFrame],
     year: int,
     var: str,
-    time_freq: str = "monthly",
-    temp_fold: str = "./results/chelsa/",
+    time_freq: Frequency,
+    tmp_directory: str,
     chunks: dict | None = None,
 ) -> dict:
     """
     Get CHELSA data for a given year and given variables.
     """
 
-    Path.mkdir(temp_fold)
+    if all(
+        Path(f"{tmp_directory}/CHELSA_{aoi_name}_{var}_{year}.nc").is_file()
+        for aoi_name in aois_names
+    ):
+        print(f"""CHELSA data for year {year} and variable {var} already downloaded. Not downloading,
+              but the behaviour of the function is not affected.
+              If this is not the desired behavior, please remove the file(s) from the temporary folder
+              {tmp_directory} and rerun the function.""")
+        paths = {
+            aoi_name: f"{tmp_directory}/CHELSA_{aoi_name}_{var}_{year}.nc"
+            for aoi_name in aois_names
+        }
 
-    aois_names, aois_bounds = get_aois_informations(aois)
-    print(f"Getting year {year} for variables {var} and areas of interest {aois_names}")
-    chelsa_datas = [
-        _get_chelsa_one_file(
-            aois_names, aois_bounds, var, month, year, chelsa_url, time_freq
+    else:
+        print(
+            f'Getting year "{year}" for variables "{var}" and areas of interest : "{aois_names}"'
         )
-        for month in range(1, 13)
-    ]
+        chelsa_datas = [
+            _get_chelsa_one_file(aois_names, aois_bounds, var, month, year, time_freq)
+            for month in range(1, 13)
+        ]
 
-    paths = {}
-    time_index = pd.Index(
-        pd.date_range(datetime.datetime(year, 1, 1), periods=12, freq="M"), name="time"
-    )
-    for aoi_name in aois_names:
-        ds_chelsa = xr.concat(
-            [chelsa_data[aoi_name] for chelsa_data in chelsa_datas], time_index
+        paths = {}
+
+        time_index = pd.Index(
+            pd.date_range(datetime.datetime(year, 1, 1), periods=12, freq="M"),
+            name="time",
         )
-        for chelsa_data in chelsa_datas:
-            del chelsa_data[aoi_name]
-        ds_chelsa = ds_chelsa[["time", "x", "y", var]]
-        ds_chelsa[var].values = (
-            ds_chelsa[var].to_numpy() * scale_factors["chelsa2"][var]
-            + add_offsets["chelsa2"][var]
-        )
-        ds_chelsa[var].attrs = variables_attributes[var]
-        paths[aoi_name] = f"{temp_fold}/CHELSA_{aoi_name}_{var}_{year}.nc"
-        ds_chelsa.chunk(chunks).to_netcdf(paths[aoi_name])
-        del ds_chelsa
+
+        for aoi_name in aois_names:
+            ds_chelsa = xr.concat(
+                [chelsa_data[aoi_name] for chelsa_data in chelsa_datas], time_index
+            )
+            for chelsa_data in chelsa_datas:
+                del chelsa_data[aoi_name]
+            ds_chelsa = ds_chelsa[["time", "x", "y", var]]
+            ds_chelsa[var].values = (
+                ds_chelsa[var].to_numpy() * scale_factors["chelsa2"][var]
+                + add_offsets["chelsa2"][var]
+            )
+            ds_chelsa[var].attrs = variables_attributes[var]
+            output_file = f"{tmp_directory}/CHELSA_{aoi_name}_{var}_{year}.nc"
+            paths[aoi_name] = output_file
+            ds_chelsa.chunk(chunks).to_netcdf(output_file)
+            del ds_chelsa
     return paths
 
 
 def get_chelsa(
-    aois: Iterable[geopandas.GeoDataFrame | pd.DataFrame],
-    variables: Iterable[str],
-    periods: Iterable[str] = ["1980-2005", "2006-2019"],
+    aois: list[gpd.GeoDataFrame],
+    variables: list[str],
+    periods: tuple[(int, int)] = ((1980, 2005), (2006, 2019)),
     time_frequency: str = "mon",
-    nb_threads: int = 4,
     aggregation: str = "monthly-means",
-    temp_fold: Path = "./results/chelsa/",
-    output_files: Path = "./results/chelsa/",
-    aois_names: Iterable[str] | None = None,
+    nb_threads: int = 4,
+    keep_tmp_directory: bool = False,
 ) -> xr.Dataset:
     """
-    Retrieve CHELSA data for a list of of regions, variables and years. This returns one monthly climatological
+    Retrieve CHELSA data for a list of regions, variables and years. This returns one monthly climatological
     xarray.Dataset object / netcdf file for each region and period.
 
     Note: CHELSA data is available from 1980 to 2019.
 
     Parameters
     ----------
-    aois: list[geopandas.GeoDataFrame | pd.DataFrame]
-        List of areas of interest, defined as geopandas.GeoDataFrame objects or
-        as a pandas.DataFrame with bounds [minx, miny, maxx, maxy].
+    aois: list[geopandas.GeoDataFrame]
+        List of areas of interest, defined as geopandas.GeoDataFrame objects. You can use
+        the `get_aois` function to retrieve them from various inputs types.
     variables: list[str]
-        List of variables to collect.
-    periods: list[str]
-        List of time frames to retrieve, and build the climatologies on.
+        List of variables to collect. For CHELSAv2, choose in :
+            "clt", "cmi", "hurs", "pet", "pr", "rsds", "sfcWind",
+            "tas", "tasmin", "tasmax", "vpd"
+    periods: tuple[(int, int)]
+        Tuple of time frames to retrieve, and build the climatologies on.
         Should correspond to the historical period and the evaluation period.
-        Default is ["1980-2005", "2006-2019"].
+        Must be provided as a list of pairs of integers defining the start and end years of the period.
+        e.g.: [(1980, 2005), (2006,2019)].
     time_frequency: str
         Time frequency of Chelsa data (currently only "mon" available).
     nb_threads: int
         Number of threads to use for parallel downloading.
-    aggregation: str
-        Aggregation method to build the climatology. Default is "monthly-means".
-    aois_names: list[str] | None
-        List of areas of interest names. If not provided, the function will retrieve them from the geopandas.GeoDataFrame objects.
-        Default is None.
-
+    keep_tmp_directory: bool
+        Whether to keep the temporary directory or not. This includes the intermediate CHELSA files
+        downloaded for each area of interest, each variable and each year.
+        Tmp directory is located at "./results/tmp/chelsa".
+        Warning: this can represent a large amount of data.
     """
 
-    Path.mkdir(temp_fold)
+    tmp_directory = "./results/tmp/chelsa2"
+    output_directory = "./results/chelsa2"
+    Path(tmp_directory).mkdir(parents=True, exist_ok=True)
+    Path(output_directory).mkdir(parents=True, exist_ok=True)
 
-    if isinstance(aois[0], geopandas.GeoDataFrame):
-        aois_names, _ = get_aois_informations(aois)
-    elif isinstance(aois[0], pd.DataFrame) and not aois_names:
-        msg = "Please provide the names of the areas of interest in `aois_names`."
-        raise Exception(msg)
+    aois_names, aois_bounds = get_aois_informations(aois)
 
-    years = set()
-    for period in periods:
-        ymin, ymax = period.split("-")
-        years_period = set(range(int(ymin), int(ymax) + 1))
-        years = years.union(years_period)
-    if "pr" in variables and 2016 in years:
+    years = set().union(*[list(range(period[0], period[1] + 1)) for period in periods])
+
+    if "pr" in variables and any(year in [2013, 2016] for year in years):
         warnings.warn(
-            "CHELSA data for 2016 is not available for precipitation (file is corrupted). \
-                      We will not use this year for computing climatology.",
-            stacklevel=1,
-        )
-    if "pr" in variables and 2013 in years:
-        warnings.warn(
-            "CHELSA data for 2013 is not available for precipitation (file is corrupted). \
-                      We will not use this year for computing climatology.",
+            "CHELSA data for years 2013 and 2016 is not available for precipitation (file is corrupted). \
+                      We will not use these years for computing climatology.",
             stacklevel=1,
         )
         years.remove(2013)  # issue with the tif
         years.remove(2016)  # issue with the tif
 
-    if time_frequency == "mon":
-        tf = "monthly"
-    else:
-        msg = "Currently only monthly time frequency available!"
-        raise Exception(msg)
+    time_frequency = get_frequency(time_frequency)
 
     pool = mp.Pool(nb_threads)
     paths = []
     for var in variables:
         paths.append(
             pool.starmap_async(
-                get_chelsa_year, [(aois, year, var, tf, temp_fold) for year in years]
+                _get_chelsa_year,
+                [
+                    (aois_names, aois_bounds, year, var, time_frequency, tmp_directory)
+                    for year in years
+                ],
             ).get()
         )
     pool.close()
-    paths2 = {key: [] for key in aois_names}
-    for path in paths:
-        for p in path:
-            for aoi_name in aois_names:
-                paths2[aoi_name].append(p[aoi_name])
+    paths2 = {
+        aoi_name: [p[aoi_name] for path in paths for p in path]
+        for aoi_name in aois_names
+    }
     del paths
 
     for aoi_name in aois_names:
@@ -211,9 +220,9 @@ def get_chelsa(
         for period in periods:
             dmin, dmax = split_period(period)
             ds_a = get_monthly_climatology(ds.sel(time=slice(dmin, dmax)))
-            path = (
-                f"{output_files[0].parent}/{aoi_name}_chelsa2_{aggregation}_{period}.nc"
+            ds_a.to_netcdf(
+                f"{output_directory}/{aoi_name}_chelsa2_{aggregation}_{period[0]}-{period[1]}.nc"
             )
-            ds_a.to_netcdf(path)
 
-    shutil.rmtree(temp_fold)
+    if not keep_tmp_directory:
+        shutil.rmtree(tmp_directory)

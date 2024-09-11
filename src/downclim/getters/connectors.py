@@ -10,11 +10,12 @@ import yaml
 from pyesgf.logon import LogonManager
 from pyesgf.search import SearchConnection
 
-ee_url = "https://earthengine-highvolume.googleapis.com"
-gcfs_cmip6_url = (
-    "https://storage.googleapis.com/cmip6/cmip6-zarr-consolidated-stores.csv"
-)
-esgf_url = "https://esgf-node.ipsl.upmc.fr/esg-search/"
+data_urls = {
+    "ee": "https://earthengine-highvolume.googleapis.com",
+    "gcsfs": "https://storage.googleapis.com/cmip6/cmip6-zarr-consolidated-stores.csv",
+    "esgf": "https://esgf-node.ipsl.upmc.fr/esg-search",
+    "chelsa": "https://os.zhdk.cloud.switch.ch/envicloud/chelsa/chelsa_V2/GLOBAL",
+}
 
 ee_image_collection = {
     "CHIRPS": "UCSB-CHG/CHIRPS/DAILY",
@@ -32,11 +33,11 @@ def connect_to_ee(**kwargs):
         Keyword arguments to pass to `ee.Initialize()`.
     """
     if not ee.data._credentials:
-        ee.Initialize(opt_url=ee_url, **kwargs)
+        ee.Initialize(opt_url=data_urls["ee"], **kwargs)
 
 
 def connect_to_gcfs(
-    token: str = "anon", catalog: str = gcfs_cmip6_url
+    token: str = "anon", catalog: str = data_urls["gcsfs"]
 ) -> tuple[gcsfs.GCSFileSystem, pd.DataFrame]:
     """
     Connect to Google Cloud File System and get the CMIP6 data catalog.
@@ -49,8 +50,8 @@ def connect_to_gcfs(
 
 def connect_to_esgf(
     context: dict,
-    esgf_credential: str = "esgf-credentials.yaml",
-    server: str = esgf_url,
+    esgf_credential: str,
+    server: str,
 ) -> pyesgf.DataSearchContext:
     """
     Connect to ESGF server
@@ -71,7 +72,7 @@ def connect_to_esgf(
         Name of the ESGF server.
     """
 
-    with Path.open(esgf_credential) as stream:
+    with Path(esgf_credential).open() as stream:
         creds = yaml.safe_load(stream)
     lm = LogonManager()
     lm.logon_with_openid(
@@ -80,16 +81,7 @@ def connect_to_esgf(
 
     conn = SearchConnection(server, distrib=True)
 
-    ctx = conn.new_context(
-        facets="*",
-        project="CORDEX",
-        domain=context["domain"],
-        driving_model=context["gcm"],
-        rcm_name=context["rcm"],
-        time_frequency="mon",
-        experiment=context["rcp"],
-        variable=context["var"],
-    )
+    ctx = conn.new_context(facets="*", **context)
     if ctx.hit_count == 0:
         msg = "The query has no results"
         raise SystemExit(msg)

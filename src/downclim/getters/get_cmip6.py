@@ -3,61 +3,75 @@ from __future__ import annotations
 from collections.abc import Iterable
 from pathlib import Path
 
+import geopandas as gpd
 import numpy as np
 import xarray as xr
 import xesmf as xe
 
+from .connectors import connect_to_gcfs
+from .get_aoi import get_aois_informations
 from .utils import (
-    connect_to_gcfs,
-    convert_cf_to_dt,
+    Frequency,
+    get_frequency,
     get_monthly_climatology,
+    prep_dataset,
     split_period,
-    variables_attributes,
 )
 
 
 def get_cmip6(
-    base_files: Iterable[str],
-    areas: Iterable[str],
-    institute: str,
-    model: str,
+    aois: Iterable[gpd.GeoDataFrame],
+    variables: Iterable[str] = ["pr", "tas", "tasmin", "tasmax"],
+    periods: tuple[(int, int)] = ((1980, 2005), (2006, 2019), (2071, 2100)),
+    time_frequency: str = "mon",
+    aggregation: str = "monthly-means",
+    institute: str = "IPSL",
+    model: str = "IPSL-CM6A-LR",
     experiment: str = "ssp126",
     ensemble: str = "r1i1p1f1",
     baseline: str = "chelsa2",
-    variables: Iterable[str] = ["pr", "tas", "tasmin", "tasmax"],
-    time_frequency: str = "mon",
-    periods: Iterable[str] = ["1980-2005", "2006-2019", "2071-2100"],
-    aggregation: str = "monthly-means",
 ) -> None:
     """
-    Get CMIP6 data for a given region and period.
+    Get CMIP6 data for given regions, variables and periods. Uses google cloud storage to retrieve data.
+    It also regrids the data to the given baseline dataset.
+
 
     Parameters
     ----------
-    model: str
-        Model.
-    experiment: str
-        Experiment.
-    ensemble: str
-        Ensemble.
-    baseline: str
-        Baseline.
+    aois: list[geopandas.GeoDataFrame]
+        List of areas of interest, defined as geopandas.GeoDataFrame objects. You can use
+        the `get_aois` function to retrieve them from various inputs types.
     variables: list
-        List of variables.
-    time_frequency: str
-        Time frequency.
-    check_file: str
-        Check file.
-    threads: int
-        Number of threads.
+        List of variables to collect.
     periods: list
-        List of periods.
+        List of periods. Each period is a tuple of two integers. It should correspond to the historical period,
+        evaluation period and the projection period. e.g. ((1980, 2005), (2006, 2019), (2071, 2100)).
+        These periods must match the periods of the baseline dataset.
+    time_frequency: str
+        Time frequency of Chelsa data (currently only "mon" available).
     aggregation: str
-        Aggregation.
+        Aggregation method to build the climatology. Default is "monthly-means".
+    institute: str
+        Name of the institute that produced the CMIP6 data. e.g. "IPSL".
+    model: str
+        Name of the model that has been run by the `institute` to produce the data. e.g. "IPSL-CM6A-LR".
+    experiment: str
+        Name of the experiment, which is typically the name of the scenario used for future projections, e.g. "ssp126", "ssp585"...
+        "historical" is automatically added and used for the historical period.
+    ensemble: str
+        Name of the ensemble run of the data. e.g. "r1i1p1f1".
+    baseline: str
+        Baseline dataset used for regridding. e.g. "chelsa2".
     """
 
+    output_directory = "./results/cmip6"
+    Path(output_directory).mkdir(parents=True, exist_ok=True)
+
+    aois_names, _ = get_aois_informations(aois)
+
     # conversions
-    if time_frequency == "mon":
+    time_frequency = get_frequency(time_frequency)
+    if time_frequency == Frequency.MONTHLY:
         table_id = "Amon"
     else:
         msg = "Currently only monthly time frequency available!"
@@ -68,43 +82,30 @@ def get_cmip6(
     for exp in ["historical", experiment]:
         activity = "CMIP" if exp == "historical" else "ScenarioMIP"
         for var in variables:
-            search_string = f"activity_id == {activity} & table_id == {table_id} & variable_id == {var} & experiment_id == {exp} & institution_id == {institute} & source_id == {model} & member_id == {ensemble}"
+            search_string = f"""activity_id == '{activity}' & table_id == '{table_id}' & variable_id == '{var}' & experiment_id == '{exp}' & institution_id == '{institute}' & source_id == '{model}' & member_id == '{ensemble}'"""
             df_ta = df.query(search_string)
             zstore = df_ta.zstore.to_numpy()[-1]
             mapper = gcs.get_mapper(zstore)
             a.append(xr.open_zarr(mapper, consolidated=True))
     ds = xr.merge(a)
     ds["time"] = np.sort(ds["time"].values)
-    dmin = min(x.split("-")[0] for x in periods) + "-01-01"
-    dmax = max(x.split("-")[1] for x in periods) + "-01-01"
+
+    dminsmaxs = [split_period(period) for period in periods]
+    dmin = min(dminsmaxs, key=lambda x: x[0])[0]
+    dmax = max(dminsmaxs, key=lambda x: x[1])[1]
     ds = ds.sel(time=slice(dmin, dmax))
     ds = ds.chunk(chunks={"time": 100, "lat": 400, "lon": 400})
-    cf = type(ds["time"].to_numpy()[0]) is not np.datetime64
-    if cf:
-        ds["time"] = [*map(convert_cf_to_dt, ds.time.values)]
-    if "pr" in list(ds.keys()):
-        ds["pr"] = ds.pr * 60 * 60 * 24 * ds.time.dt.days_in_month  # s-1 to month-1
-        ds.pr.attrs = variables_attributes["pr"]
-    if "tas" in list(ds.keys()):
-        ds["tas"] = ds.tas - 273.15  # K to °C
-        ds.tas.attrs = variables_attributes["tas"]
-    if "tasmin" in list(ds.keys()):
-        ds["tasmin"] = ds.tasmin - 273.15  # K to °C
-        ds.tasmin.attrs = variables_attributes["tasmin"]
-    if "tasmax" in list(ds.keys()):
-        ds["tasmax"] = ds.tasmax - 273.15  # K to °C
-        ds.tasmax.attrs = variables_attributes["tasmax"]
+    ds = prep_dataset(ds, "cmip6")
 
-    check_file = "toto.txt"
-    for period in periods:
-        dmin, dmax = split_period(period)
-        ds_a = get_monthly_climatology(ds.sel(time=slice(dmin, dmax)))
-        for i in list(range(len(areas))):
-            base = xr.open_dataset(base_files[i])
-            regridder = xe.Regridder(ds_a, base, "bilinear")
-            ds_r = regridder(ds_a, keep_attrs=True)
-            path = f"{Path(check_file).parent}/{areas[i]}_CMIP6_global_{institute}_{model}_{experiment}_{ensemble}_none_none_{baseline}_{aggregation}_{period}.nc"
-            ds_r.to_netcdf(path)
-
-    with Path.open(check_file, "a") as f:
-        f.write("Done.")
+    for i, period in enumerate(periods):
+        dmin, dmax = dminsmaxs[i]
+        ds_clim = get_monthly_climatology(ds.sel(time=slice(dmin, dmax)))
+        for aoi_name in aois_names:
+            baseline_file = (
+                f"./results/{baseline}/{aoi_name}_chelsa2_{aggregation}_*.nc"
+            )
+            base = xr.open_dataset(baseline_file[0])
+            regridder = xe.Regridder(ds_clim, base, "bilinear")
+            ds_r = regridder(ds_clim, keep_attrs=True)
+            output_file = f"{output_directory}/{aoi_name}_CMIP6_global_{institute}_{model}_{experiment}_{ensemble}_none_none_{baseline}_{aggregation}_{period[0]}-{period[1]}.nc"
+            ds_r.to_netcdf(output_file)

@@ -37,6 +37,8 @@ dependencies = []
 test = [
   "pytest >=6",
   "pytest-cov >=3",
+  "shapely",
+  "geopandas",
 ]
 dev = [
   "pytest >=6",
