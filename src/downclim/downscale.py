@@ -1,8 +1,23 @@
 from __future__ import annotations
 
+from enum import Enum
 from pathlib import Path
+from typing import Any
 
 import xarray as xr
+
+
+class DownscaleMethod(Enum):
+    """Class to define the downscaling methods available."""
+
+    BIAS_CORRECTION = "bias_correction"
+    QUANTILE_MAPPING = "quantile_mapping"
+    DYNAMICAL = "dynamical"
+
+    @classmethod
+    def _missing_(cls, value: Any) -> None:
+        msg = f"Unknown or not implemented downscaling method '{value}'. Right now only 'bias_correction' is implemented."
+        raise ValueError(msg)
 
 
 def generate_dataset_names(
@@ -99,12 +114,12 @@ def bias_correction(
         xr.Dataset: Bias corrected projections.
     """
 
-    # anomalies
+    # Compute anomalies
     anomalies = proj_future - proj_hist
-    # add to the baseline
+    # Add to the baseline
     proj_ds = base_hist + anomalies
-    if "pr" in list(proj_future.keys()):
-        anomalies_rel = (proj_future - proj_hist) / proj_hist
+    if "pr" in proj_future:
+        anomalies_rel = (proj_future - proj_hist) / (proj_hist + 1)
         anomalies["pr"] = anomalies_rel["pr"]
         proj_ds = base_hist * (1 + anomalies)
 
@@ -112,7 +127,7 @@ def bias_correction(
 
 
 def downscale(
-    method: str,
+    method: DownscaleMethod,
     proj_file: str,
     base_hist_file: str,
     area: str,
@@ -135,7 +150,7 @@ def downscale(
         base_hist_file, proj_hist_file, proj_future_file
     )
 
-    if method == "bias_correction":
+    if method == DownscaleMethod.BIAS_CORRECTION:
         proj_ds = bias_correction(base_hist, proj_hist, proj_future)
     else:
         msg = "Method not implemented yet, only bias_correction is available."

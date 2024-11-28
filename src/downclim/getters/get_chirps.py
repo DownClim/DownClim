@@ -13,7 +13,6 @@ from .get_aoi import get_aois_informations
 from .utils import (
     Aggregation,
     Frequency,
-    get_frequency,
     get_monthly_climatology,
     get_monthly_mean,
     split_period,
@@ -112,7 +111,7 @@ def get_chirps(
 
     aois_names, aois_bounds = get_aois_informations(aois)
 
-    time_frequency = get_frequency(time_frequency)
+    time_frequency = Frequency(time_frequency)
 
     connect_to_ee()
 

@@ -9,12 +9,11 @@ import pandas as pd
 import xarray as xr
 
 from .connectors import connect_to_ee, ee_image_collection
+from .get_aoi import get_aois_informations
 from .utils import (
     Aggregation,
     Frequency,
     add_offsets,
-    get_aois_informations,
-    get_frequency,
     get_monthly_climatology,
     get_monthly_mean,
     scale_factors,
@@ -98,7 +97,7 @@ def get_gshtd(
 
     aois_names, aois_bounds = get_aois_informations(aois)
 
-    time_frequency = get_frequency(time_frequency)
+    time_frequency = Frequency(time_frequency)
 
     connect_to_ee()
 

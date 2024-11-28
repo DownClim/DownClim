@@ -125,7 +125,8 @@ def get_cordex(
             "var": variables,
         }
         # connect
-        ctx = connect_to_esgf(context, esgf_credential, server=data_urls["esgf"])
+        connector = connect_to_esgf(esgf_credential, server=data_urls["esgf"])
+        ctx = connector.new_context(facets="*", **context)
         all_scripts = [res.file_context().get_download_script() for res in ctx.search()]
 
         Path(tmp_directory).mkdir(parents=True, exist_ok=True)

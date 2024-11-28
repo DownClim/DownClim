@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime
 import shutil
 import warnings
+from collections.abc import Iterable
 from pathlib import Path
 from urllib.error import URLError
 from urllib.request import urlopen
@@ -18,7 +19,6 @@ from .get_aoi import get_aois_informations
 from .utils import (
     Frequency,
     add_offsets,
-    get_frequency,
     get_monthly_climatology,
     scale_factors,
     split_period,
@@ -53,7 +53,7 @@ def _get_chelsa_one_file(
         url = f"{base_url}/monthly/{var}/CHELSA_{var}_{month:02d}_{year}_V.2.1.tif"
     else:
         msg = "Only monthly time frequency is available for retrieving CHELSA data."
-        raise Exception(msg)
+        raise ValueError(msg)
 
     try:
         urlopen(url)
@@ -61,7 +61,7 @@ def _get_chelsa_one_file(
         msg = (
             f"Page {url} not found, please check the name of the variable or the year."
         )
-        raise Exception(msg) from e
+        raise URLError(msg) from e
 
     ds = rio.open_rasterio(url).to_dataset("band").rename_vars({1: var})
     for aoi_name, aoi_bounds in zip(aois_names, aois_bounds, strict=False):
@@ -91,7 +91,7 @@ def _get_chelsa_year(
         Path(f"{tmp_directory}/CHELSA_{aoi_name}_{var}_{year}.nc").is_file()
         for aoi_name in aois_names
     ):
-        print(f"""CHELSA data for year {year} and variable {var} already downloaded. Not downloading,
+        print(f"""CHELSA data for year '{year}' and variable '{var}' already downloaded. Not downloading,
               but the behaviour of the function is not affected.
               If this is not the desired behavior, please remove the file(s) from the temporary folder
               {tmp_directory} and rerun the function.""")
@@ -136,14 +136,14 @@ def _get_chelsa_year(
 
 
 def get_chelsa(
-    aois: list[gpd.GeoDataFrame],
-    variables: list[str],
+    aois: Iterable[gpd.GeoDataFrame],
+    variables: Iterable[str],
     periods: tuple[(int, int)] = ((1980, 2005), (2006, 2019)),
     time_frequency: str = "mon",
-    aggregation: str = "monthly-means",
+    downscaling_aggregation: str = "monthly-means",
     nb_threads: int = 4,
     keep_tmp_directory: bool = False,
-) -> xr.Dataset:
+) -> None:
     """
     Retrieve CHELSA data for a list of regions, variables and years. This returns one monthly climatological
     xarray.Dataset object / netcdf file for each region and period.
@@ -175,15 +175,19 @@ def get_chelsa(
         Warning: this can represent a large amount of data.
     """
 
+    # Create directories
     tmp_directory = "./results/tmp/chelsa2"
     output_directory = "./results/chelsa2"
     Path(tmp_directory).mkdir(parents=True, exist_ok=True)
     Path(output_directory).mkdir(parents=True, exist_ok=True)
 
+    # Get AOIs information
     aois_names, aois_bounds = get_aois_informations(aois)
 
+    # Get years to retrieve
     years = set().union(*[list(range(period[0], period[1] + 1)) for period in periods])
 
+    # Specific case for CHELSA "pr" data
     if "pr" in variables and any(year in [2013, 2016] for year in years):
         warnings.warn(
             "CHELSA data for years 2013 and 2016 is not available for precipitation (file is corrupted). \
@@ -193,8 +197,10 @@ def get_chelsa(
         years.remove(2013)  # issue with the tif
         years.remove(2016)  # issue with the tif
 
-    time_frequency = get_frequency(time_frequency)
+    # Get time frequency
+    time_frequency = Frequency(time_frequency)
 
+    # Actual data retrieval
     pool = mp.Pool(nb_threads)
     paths = []
     for var in variables:
@@ -214,14 +220,19 @@ def get_chelsa(
     }
     del paths
 
+    # Merge files to get one file per aoi for all periods
     for aoi_name in aois_names:
         print("Merging files for area " + aoi_name + "...")
-        ds = xr.open_mfdataset(paths2[aoi_name], decode_coords="all", parallel=True)
+        ds_aoi_period = xr.open_mfdataset(
+            paths2[aoi_name], decode_coords="all", parallel=True
+        )
         for period in periods:
             dmin, dmax = split_period(period)
-            ds_a = get_monthly_climatology(ds.sel(time=slice(dmin, dmax)))
-            ds_a.to_netcdf(
-                f"{output_directory}/{aoi_name}_chelsa2_{aggregation}_{period[0]}-{period[1]}.nc"
+            ds_aoi_period_clim = get_monthly_climatology(
+                ds_aoi_period.sel(time=slice(dmin, dmax))
+            )
+            ds_aoi_period_clim.to_netcdf(
+                f"{output_directory}/{aoi_name}_chelsa2_{downscaling_aggregation}_{period[0]}-{period[1]}.nc"
             )
 
     if not keep_tmp_directory:

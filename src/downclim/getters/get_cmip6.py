@@ -12,7 +12,6 @@ from .connectors import connect_to_gcfs
 from .get_aoi import get_aois_informations
 from .utils import (
     Frequency,
-    get_frequency,
     get_monthly_climatology,
     prep_dataset,
     split_period,
@@ -70,7 +69,7 @@ def get_cmip6(
     aois_names, _ = get_aois_informations(aois)
 
     # conversions
-    time_frequency = get_frequency(time_frequency)
+    time_frequency = Frequency(time_frequency)
     if time_frequency == Frequency.MONTHLY:
         table_id = "Amon"
     else:

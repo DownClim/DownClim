@@ -58,7 +58,7 @@ def get_aoi(
     save_points_file: bool = False,
     save_points_figure: bool = False,
     log10_eval_pts: int = 4,
-) -> gpd.geodataframe.GeoDataFrame:
+) -> gpd.GeoDataFrame:
     """
     Get area of interest administrative boundaries and sample points and save them.
     Also possible to plot and save figures of the aoi and the points.
