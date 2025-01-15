@@ -2,7 +2,6 @@
 requires = ["setuptools>=61", "setuptools_scm[toml]>=7"]
 build-backend = "setuptools.build_meta"
 
-
 [project]
 name = "DownClim"
 authors = [
@@ -31,7 +30,17 @@ classifiers = [
   "Typing :: Typed",
 ]
 dynamic = ["version"]
-dependencies = []
+dependencies = [
+  "numpy",
+  "geopandas",
+  "pandas",
+  "xarray",
+  "xesmf",
+  "pyesgf",
+  "gcsfs",
+  "ee",
+  "pydantic",
+]
 
 [project.optional-dependencies]
 test = [

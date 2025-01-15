@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field, InstanceOf, field_validator, model_valida
 from .downscale import DownscaleMethod
 from .getters.get_aoi import get_aoi
 from .getters.utils import Aggregation, DataProduct, Frequency
-from .list_projections import CMIP6Context, CordexContext
+from .list_projections import CMIP6Context, CORDEXContext
 
 
 def to_list(v: Any) -> list:
@@ -67,7 +67,7 @@ class DownclimContext(BaseModel):
         example=True,
         description="Whether to use CMIP6 data for scenarios to downscale.",
     )
-    cordex_context: CordexContext | None
+    cordex_context: CORDEXContext | None
     cmip6_context: CMIP6Context | None
     baseline_years: tuple[int, int] = Field(
         default=(1980, 2005),

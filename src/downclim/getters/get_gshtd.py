@@ -50,13 +50,13 @@ def get_gshtd_single(
         ds = get_monthly_mean(ds)
     else:
         msg = "Currently only monthly time frequency available!"
-        raise Exception(msg)
+        raise ValueError(msg)
 
     if aggregation == Aggregation.MONTHLY_MEAN:
         ds = get_monthly_climatology(ds)
     else:
         msg = "Currently only monthly-means aggregation available!"
-        raise Exception(msg)
+        raise ValueError(msg)
     ds = ds.where(ds.b1 > 0)
     ds["b1"] = ds.b1 * scale_factors["GSHTD"] + add_offsets["GSHTD"]  # K to °C
     ds.b1.attrs = variables_attributes[var]
@@ -65,9 +65,9 @@ def get_gshtd_single(
 
 # code
 def get_gshtd(
-    aois: Iterable[gpd.GeoDataFrame],
-    vars: Iterable[str] = ["tas", "tasmin", "tasmax"],
-    periods: tuple[(int, int)] = ((1980, 2005), (2006, 2019)),
+    aois: Iterable[gpd.GeoDataFrame | pd.DataFrame],
+    variables: Iterable[str] = ("tas", "tasmin", "tasmax"),
+    periods: Iterable[(int, int)] = ((1980, 2005), (2006, 2019)),
     time_frequency: str = "mon",
     aggregation: str = "monthly-mean",
 ) -> None:
@@ -79,12 +79,12 @@ def get_gshtd(
     Parameters
     ----------
     aois: Iterable[geopandas.GeoDataFrame | pandas.DataFrame]
-        List of areas of interest, defined as geopandas.GeoDataFrame objects (from shapefiles) or
+        Iterable of areas of interest, defined as geopandas.GeoDataFrame objects (from shapefiles) or
         as a pandas.DataFrame with bounds [minx, miny, maxx, maxy].
-    vars: List[str]
-        List of variables to retrieve. Default is ["tas", "tasmin", "tasmax"].
-    periods: List[str]
-        List of time periods to retrieve. e.g. ["1980-2005", "2006-2019", "2071-2100"].
+    vars: Iterable[str]
+        Iterable of variables to retrieve. Default is ["tas", "tasmin", "tasmax"].
+    periods: Iterable[(int, int)]
+        Iterable of time periods to retrieve. Default is ((1980, 2005), (2006, 2019))
     time_frequency: str
         Time frequency of the data. Default is "mon" (monthly)
     aggregation: str
@@ -103,7 +103,9 @@ def get_gshtd(
 
     for aoi_name, aoi_bounds in zip(aois_names, aois_bounds, strict=False):
         for period in periods:
-            ds = xr.merge([get_gshtd_single(aoi_bounds, var, period) for var in vars])
+            ds = xr.merge(
+                [get_gshtd_single(aoi_bounds, var, period) for var in variables]
+            )
             output_file = (
                 f"{output_directory}/{aoi_name}_gshtd_{aggregation}_{period}.nc"
             )

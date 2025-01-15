@@ -35,7 +35,27 @@ def generate_dataset_names(
     aggregation: str,
     period: str,
 ) -> str:
-    return f"{Path(proj_file).parent()}/{area}_{project}_{domain}_{institute}_{model}_{experiment}_{ensemble}_{rcm}_{downscaling}_{baseline}_{aggregation}_{period}.nc"
+    """Generate the dataset names for the projections.
+
+    Args:
+        proj_file (str): Future projections dataset.
+        area (str): Area name.
+        project (str): Project name.
+        domain (str): Domain name.
+        institute (str): Institute name.
+        model (str): Model name.
+        experiment (str): Experiment name.
+        ensemble (str): Ensemble name.
+        rcm (str): RCM name.
+        downscaling (str): Downscaling method.
+        baseline (str): Baseline product.
+        aggregation (str): Aggregation method.
+        period (str): Period.
+
+    Returns:
+        str: Dataset name as a netCDF file.
+    """
+    return f"{Path(proj_file).parent}/{area}_{project}_{domain}_{institute}_{model}_{experiment}_{ensemble}_{rcm}_{downscaling}_{baseline}_{aggregation}_{period}.nc"
 
 
 def open_datasets(
@@ -55,10 +75,27 @@ def open_datasets(
     period_future: str,
     period_hist: str,
 ) -> tuple[xr.Dataset, xr.Dataset, xr.Dataset]:
-    """Open the datasets.
+    """Open all the datasets for downscaling : baseline historical, historical projections and future projections.
+
+    Args:
+        base_hist_file (str): Baseline historical dataset filename.
+        proj_file (str): Future projections dataset filename.
+        area (str): Area name.
+        project (str): Project name.
+        domain (str): Domain name.
+        institute (str): Institute name.
+        model (str): Model name.
+        experiment (str): Experiment name.
+        ensemble (str): Ensemble name.
+        rcm (str): RCM name.
+        downscaling (str): Downscaling method.
+        baseline (str): Baseline product.
+        aggregation (str): Aggregation method.
+        period_future (str): Future period.
+        period_hist (str): Historical period
 
     Returns:
-        tuple: Datasets.
+        tuple (xr.Dataset, xr.Dataset, xr.Dataset): baseline historical, historical projections and future projections datasets.
     """
 
     # open
@@ -77,6 +114,7 @@ def open_datasets(
         aggregation,
         period_future,
     )
+
     proj_hist_file = generate_dataset_names(
         proj_file,
         area,
@@ -93,11 +131,11 @@ def open_datasets(
         period_hist,
     )
 
-    proj_future = xr.open_mfdataset(proj_future_file, parallel=True)
-    proj_hist = xr.open_mfdataset(proj_hist_file, parallel=True)
-    base_hist = xr.open_mfdataset(base_hist_file, parallel=True)
-
-    return base_hist, proj_hist, proj_future
+    return (
+        xr.open_mfdataset(base_hist_file, parallel=True),
+        xr.open_mfdataset(proj_hist_file, parallel=True),
+        xr.open_mfdataset(proj_future_file, parallel=True),
+    )
 
 
 def bias_correction(
@@ -143,11 +181,23 @@ def downscale(
     aggregation: str,
     period_future: str,
     period_hist: str,
-    proj_hist_file: str,
-    proj_future_file: str,
 ) -> None:
     base_hist, proj_hist, proj_future = open_datasets(
-        base_hist_file, proj_hist_file, proj_future_file
+        base_hist_file,
+        proj_file,
+        area,
+        project,
+        domain,
+        institute,
+        model,
+        experiment,
+        ensemble,
+        rcm,
+        downscaling,
+        baseline,
+        aggregation,
+        period_future,
+        period_hist,
     )
 
     if method == DownscaleMethod.BIAS_CORRECTION:
@@ -158,5 +208,5 @@ def downscale(
 
     # prep and write
     proj_ds.to_netcdf(
-        f"{Path(proj_file).parent()}/{area}_{project}_{domain}_{institute}_{model}_{experiment}_{ensemble}_{rcm}_{downscaling}_{baseline}_{aggregation}_{period_future}_{period_hist}_bc.nc"
+        f"{Path(proj_file).parent}/{area}_{project}_{domain}_{institute}_{model}_{experiment}_{ensemble}_{rcm}_{downscaling}_{baseline}_{aggregation}_{period_future}_{period_hist}_bc.nc"
     )

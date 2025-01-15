@@ -213,7 +213,7 @@ def run_hist(
     baseline: str,
     aggregation: str,
     period_eval: str,
-):
+) -> pd.DataFrame:
     proj_file = f"results/projections/{aoi}_{origin}_{domain}_{institute}_{model}_{experiment}_{ensemble}_{rcm}_{downscaling}_{baseline}_{aggregation}_{period_eval}.nc"
     area_shp = gp.read_file(aoi_file)
     ds = xr.open_dataset(ds_file).rio.clip(area_shp.geometry.values, area_shp.crs)
@@ -227,7 +227,7 @@ def run_eval(
     ds_file: str,
     base_file: str,
     area_file: str,
-    parameters: dict,
+    parameters: dict(any, any),
     save_file: str | None = None,
 ) -> pd.DataFrame:
     """Run the evaluation of the projections.
@@ -275,12 +275,19 @@ def merge_eval(eval_files: list, merged_file: str) -> pd.DataFrame:
 def merge_hist(
     base_hist_files: list[Path], proj_hist_files: list[Path], output_file: Path
 ) -> None:
+    """Merges all baseline and projection historical files.
+
+    Args:
+        base_hist_files (list[Path]): list of baseline historical files
+        proj_hist_files (list[Path]): list of projection historical files
+        output_file (Path): name of the output file to save the merged historical files.
+    """
     base = [pd.read_csv(base_file, sep="\t") for base_file in base_hist_files]
     proj = [pd.read_csv(proj_file, sep="\t") for proj_file in proj_hist_files]
 
-    all = pd.concat([proj, base])
-    all = all[all["count"] > 0]
-    all.to_csv(output_file, sep="\t", index=False)
+    all_hist_files = pd.concat([proj, base])
+    all_hist_files = all_hist_files[all_hist_files["count"] > 0]
+    all_hist_files.to_csv(output_file, sep="\t", index=False)
 
 
 def merge_bias(

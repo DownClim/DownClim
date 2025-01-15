@@ -1,104 +1,100 @@
 from __future__ import annotations
 
+import re
 import warnings
 from collections.abc import Iterable
 
+import numpy as np
 import pandas as pd
-from pydanctic import BaseModel, Field, Optional, field_validator, model_validator
+import pyesgf
+from pydantic import BaseModel, Field, field_validator
 
-from .getters.connectors import (
-    connect_to_esgf,
-    connect_to_gcfs,
-    data_urls,
-    inspect_cmip6,
-    inspect_cordex,
-)
+from .getters.connectors import connect_to_esgf, data_urls
 
 
 # CORDEX
 # ------
-class CordexContext(BaseModel):
+class CORDEXContext(BaseModel):
     """Context about the query on the CORDEX dataset. Entries of the dictionary can be either `str` or `Iterables` (e.g. `list`) if multiple values are provided. These following keys are available, and correspond to the keys defined defined on ESGF nodes, cf. https://esgf-node.ipsl.upmc.fr/search/cordex-ipsl/ ."""
 
-    project: Optional[str | Iterable[str]] = Field(
-        default=["CORDEX"], example="CORDEX", description="Name of the project"
+    project: str | list[str] | None = Field(
+        default="CORDEX", example="CORDEX", description="Name of the project"
     )
-    product: Optional[str | Iterable[str]] = Field(
-        default=["output"], description="Name of the product"
+    product: str | list[str] | None = Field(
+        default="output", description="Name of the product"
     )
-    domain: Optional[str | Iterable[str]] = Field(
-        description="CORDEX domain to look for"
+    domain: str | list[str] | None = Field(description="CORDEX domain(s) to look for")
+    institute: str | list[str] | None = Field(
+        default=None, description="Institute name that produced the data"
     )
-    institute: Optional[str]
-    driving_model: Optional[str]
-    experiment: Optional[Iterable[str]]
-    experiment_family: Optional[str]
-    ensemble: Optional[str]
-    rcm_model: Optional[str]
-    downscaling_realisation: Optional[str]
-    time_frequency: Optional[str]
-    variable: Optional[str]
-    variable_long_name: Optional[str]
+    driving_model: str | list[str] | None = Field(
+        default=None,
+        description="Name of the global climate model used to drive the RCM",
+    )
+    experiment: str | list[str] | None = Field(
+        default=["historical", "rcp26"],
+        description="Name of the experiment type of the simulation",
+    )
+    experiment_family: str | list[str] | None = Field(
+        default=None,
+        description="Type of experiment : weither 'RCP' or 'Historical' or 'All'",
+    )
+    ensemble: str | list[str] | None = Field(
+        default="r1i1p1", description="Ensemble member"
+    )
+    rcm_model: str | list[str] | None = Field(
+        default=None, description="Name of the regional climate model"
+    )
+    downscaling_realisation: str | list[str] | None = Field(
+        default=None, description="Version of the downscaling realisation"
+    )
+    time_frequency: str | None = Field(
+        default="mon", description="Time frequency of the data"
+    )
+    variable: str | list[str] | None = Field(
+        default=["tas", "tasmin", "tasmax", "pr"], description="Variables requested"
+    )
+    variable_long_name: str | list[str] | None = Field(
+        default=None, description="Long name of the variables"
+    )
 
-    @field_validator("project", mode="before")
+    @field_validator("project")
     @classmethod
-    def validate_project(cls, project: str | Iterable[str]) -> str | Iterable[str]:
+    def validate_project(
+        cls, project: str | Iterable[str] | None
+    ) -> str | Iterable[str]:
         if not project:
             msg = "No project provided, defaulting to 'CORDEX'"
             warnings.warn(msg, stacklevel=2)
             return "CORDEX"
         return project
 
-    @model_validator(mode="before")
+    @field_validator("product")
     @classmethod
-    def validate_context(
-        cls, context: dict[str, str | Iterable[str]]
-    ) -> dict[str, Iterable[str]]:
-        if context["project"] is None:
-            context["project"] = "CORDEX"
-            msg = "No project provided, defaulting to 'CORDEX'"
-            warnings.warn(msg, stacklevel=2)
-        if context["product"] not in context:
-            context["product"] = "output"
+    def validate_product(
+        cls, product: str | Iterable[str] | None
+    ) -> str | Iterable[str]:
+        if not product:
             msg = "No product provided, defaulting to 'output'"
             warnings.warn(msg, stacklevel=2)
-        if any(exp in context["experiment"] for exp in ["evaluation", "historical"]):
-            if isinstance(context["experiment"], str):
-                context["experiment"] = [context["experiment"], "historical"]
-            else:
-                context["experiment"] = context["experiment"] + ["historical"]
-            msg = """Historical or evaluation experiments are mandatory to get projections, but none are provided.
+            return "output"
+        return product
+
+    @field_validator("experiment", mode="before")
+    @classmethod
+    def validate_experiment(cls, experiment: str | list[str] | None) -> list[str]:
+        if not any(exp == "historical" for exp in experiment):
+            msg = """Historical experiment is mandatory to associate with projections.
                 By default we add 'historical' to the list of experiments."""
             warnings.warn(msg, stacklevel=2)
-        return context
-
-
-def _check_cordex_context(
-    context: dict[str, str | Iterable[str]],
-) -> dict[str, str | Iterable[str]]:
-    """Check if context is valid for CORDEX dataset, i.e. that a minimal information is provided to query ESFG node."""
-    # Check if context is valid
-    if "project" not in context:
-        context["project"] = "CORDEX"
-        msg = "No project provided, defaulting to 'CORDEX'"
-        warnings.warn(msg, stacklevel=2)
-    if "product" not in context:
-        context["product"] = "output"
-        msg = "No product provided, defaulting to 'output'"
-        warnings.warn(msg, stacklevel=2)
-    if any(exp in context["experiment"] for exp in ["evaluation", "historical"]):
-        if isinstance(context["experiment"], str):
-            context["experiment"] = [context["experiment"], ["historical"]]
-        else:
-            context["experiment"] = context["experiment"] + ["historical"]
-        msg = """Historical or evaluation experiments are mandatory to get projections, but none are provided.
-            By default we add 'historical' to the list of experiments."""
-        warnings.warn(msg, stacklevel=2)
-    return context
+            if isinstance(experiment, str):
+                return [experiment, "historical"]
+            return [*experiment, "historical"]
+        return experiment
 
 
 def list_available_cordex_simulations(
-    context: dict[str, str | Iterable[str]],
+    context: CORDEXContext,
     esgf_credential: str = "config/credentials_esgf.yml",
     server: str = data_urls["esgf"],
 ) -> pd.DataFrame:
@@ -147,17 +143,68 @@ def list_available_cordex_simulations(
         pd.DataFrame: List of CORDEX simulations available on esgf node meeting the search criteria.
     """
 
-    # Check if context is valid
-    context = _check_cordex_context(context)
-
     # esgf connection
     conn = connect_to_esgf(esgf_credential, server)
     # list CORDEX datasets matching context
     cordex_simulations = inspect_cordex(context=context, connector=conn)
     # filter simulations that don't have both historical & projection
-    return cordex_simulations.groupby(["source_id", "member_id"]).filter(
-        lambda x: {"historical", "ssp126"}.issubset(set(x["experiment_id"]))
+    return cordex_simulations.groupby(
+        ["driving_model", "rcm_model", "ensemble"]
+    ).filter(lambda x: set(context.experiment).issubset(set(x["experiment"])))
+
+
+def inspect_cordex(
+    context: dict[str, str | Iterable[str]] | CORDEXContext,
+    connector: pyesgf.SearchConnection,
+) -> pd.DataFrame:
+    """
+    Inspects ESGF server to get information about the available datasets provided the context.
+
+    Parameters
+    ----------
+    context: dict
+        Dictionary containing information about the query on the ESGF server. It must contain the following keys:
+            - domain: str
+            - gcm: str
+            - rcm: str
+            - time_frequency: str
+            - experiment: str
+            - variable: str
+    connector: pyesgf.SearchConnection
+        Connector to the ESGF server. Obtained using the `connect_to_esgf()` function.
+
+    Returns
+    -------
+    pd.DataFrame: DataFrame containing information about the available datasets matching the query
+    """
+
+    if isinstance(context, CORDEXContext):
+        context = context.model_dump()
+
+    ctx = connector.new_context(facets="*", **context)
+    if ctx.hit_count == 0:
+        msg = "The query has no results"
+        raise SystemExit(msg)
+    df_cordex = pd.DataFrame(
+        [re.split("[|.]", res.dataset_id, maxsplit=12) for res in ctx.search()]
     )
+    df_cordex.columns = [
+        "project",
+        "product",
+        "domain",
+        "institute",
+        "driving_model",
+        "experiment",
+        "ensemble",
+        "rcm_model",
+        "downscaling_realisation",
+        "time_frequency",
+        "variable",
+        "version",
+        "datanode",
+    ]
+    df_cordex.project = df_cordex.project.str.upper()
+    return df_cordex.drop_duplicates()
 
 
 # CMIP6
@@ -165,7 +212,9 @@ def list_available_cordex_simulations(
 
 
 class CMIP6Context(BaseModel):
-    """Context about the query on the CMIP6 dataset. Entries of the dictionary can be either `str` or `Iterables` (e.g. `list`) if multiple values are provided. These following keys are available. None are mandatory:
+    """Context about the query on the CMIP6 dataset.
+
+    Entries of the dictionary can be either `str` or `list` of `str` if multiple values are provided. These following keys are available. None are mandatory:
     - activity_id: str, e.g "ScenarioMIP", "CMIP"
     - institution_id: str, e.g "IPSL", "NCAR"
     - source_id: str, e.g "IPSL-CM6A-LR", "CMCC-CM2-HR4"
@@ -174,28 +223,33 @@ class CMIP6Context(BaseModel):
     - table_id: str, e.g "Amon", "day"
     - variable_id: str, e.g "tas", "pr"
     - grid_label: str, e.g "gn", "gr"
-    - zstore: str, e.g "gs://cmip6/CMIP6/ScenarioMIP/IPSL/IPSL-CM6A-LR/ssp126/r1i1p1f1/Amon/tas/gr/v20190903"
-    - dcpp_init_year: str, e.g "1850", "2015"
-    - version: str, e.g "20190903"
     """
 
-    activity_id: Optional[str | Iterable[str]]
-    institution_id: Optional[str]
-    source_id: Optional[str]
-    experiment_id: Optional[str | Iterable[str]]
-    member_id: Optional[str]
-    table_id: Optional[str]
-    variable_id: Optional[str]
-    grid_label: Optional[str]
-    zstore: Optional[str]
-    dcpp_init_year: Optional[str]
-    version: Optional[str]
+    activity_id: str | list[str] | None = Field(
+        default=["ScenarioMIP", "CMIP"], description="Name of the CMIP6 activity"
+    )
+    institution_id: str | list[str] | None = Field(
+        default=["IPSL", "NCAR"], description="Institute name that produced the data"
+    )
+    source_id: str | list[str] | None = Field(
+        default=None, description="Global climate model name"
+    )
+    experiment_id: str | list[str] | None = Field(
+        default=["ssp245", "historical"],
+        description="Name of the experiment type of the simulation",
+    )
+    member_id: str | list[str] | None = Field(
+        default="r1i1p1f1", description="Ensemble member"
+    )
+    table_id: str | None = Field(default="Amon", description="CMIP6 table name")
+    variable_id: str | list[str] | None = Field(
+        default=["tas", "tasmin", "tasmax", "pr"], description="Variables name"
+    )
+    grid_label: str | None = Field(default=None, description="Grid label")
 
-    @field_validator("expriment_id", mode="before")
+    @field_validator("experiment_id", mode="before")
     @classmethod
-    def validate_experiment_id(
-        cls, experiment: str | Iterable[str]
-    ) -> str | Iterable[str]:
+    def validate_experiment_id(cls, experiment: str | list[str] | None) -> list[str]:
         if not any(exp == "historical" for exp in experiment):
             msg = """Historical experiment is mandatory to associate with projections.
                 By default we add 'historical' to the list of experiments."""
@@ -235,17 +289,19 @@ def list_available_cmip6_simulations(
         pd.DataFrame: DataFrame containing information about the available datasets matching
     """
 
-    # cmip6 connection
-    _, df_available_cmip6 = connect_to_gcfs()
+    # gcfs connection
+    # gcfs_connector = connect_to_gcfs()
     # list CMIP6 datasets matching context
-    cmip6_simulations = inspect_cmip6(context, df_available_cmip6)
-    cmip6_simulations["domain"] = "GLOBAL"
-    cmip6_simulations["product"] = "output"
-    if cmip6_simulations["table_id"] == "Amon":
-        cmip6_simulations["time_frequency"] = "mon"
+    cmip6_simulations = inspect_cmip6(context)
+    cmip6_simulations = cmip6_simulations.assign(domain="GLOBAL")
+    cmip6_simulations = cmip6_simulations.assign(product="output")
+    cmip6_simulations["time_frequency"] = np.where(
+        cmip6_simulations["table_id"] == "Amon", "mon", None
+    )
+
     # filter simulations that don't have both historical & projection
     cmip6_simulations = cmip6_simulations.groupby(["source_id", "member_id"]).filter(
-        lambda x: {"historical", "ssp126"}.issubset(set(x["experiment_id"]))
+        lambda x: set(context.experiment_id).issubset(set(x["experiment_id"]))
     )
 
     return (
@@ -266,12 +322,76 @@ def list_available_cmip6_simulations(
     )
 
 
-# save
+def inspect_cmip6(
+    context: dict[str, str | Iterable[str]] | CMIP6Context,
+    cmip6_catalog_url: str = data_urls["gcsfs_cmip6"],
+) -> pd.DataFrame:
+    """
+    Inspects Google Cloud File System to get information about the available CMIP6 datasets provided the context.
+
+    Parameters
+    ----------
+    context: dict([str, str | Iterable[str]] | CMIP6Context)
+        Dictionary or CMIP6Context object containing information about the query on the CMIP6 dataset. Entries of the dictionary can be
+        either `str` or `Iterables` (e.g. `list`) if multiple values are provides.
+        These following keys are available (none are mandatory):
+            - activity_id: str, e.g "ScenarioMIP", "CMIP"
+            - institution_id: str, e.g "IPSL", "NCAR"
+            - source_id: str, e.g "IPSL-CM6A-LR", "CMCC-CM2-HR4"
+            - experiment_id: str, e.g "ssp126", "historical"
+            - member_id: str, e.g "r1i1p1f1"
+            - table_id: str, e.g "Amon", "day"
+            - variable_id: str, e.g "tas", "pr"
+            - grid_label: str, e.g "gn", "gr"
+            - zstore: str, e.g "gs://cmip6/CMIP6/ScenarioMIP/IPSL/IPSL-CM6A-LR/ssp126/r1i1p1f1/Amon/tas/gr/v20190903"
+            - dcpp_init_year: str, e.g "1850", "2015"
+            - version: str, e.g "20190903"
+    cmip6_catalog_url: str (default: data_urls["gcsfs_cmip6"])
+        URL to the CMIP6 catalog on the Google Cloud File System.
+
+    Returns
+    -------
+    pd.DataFrame: DataFrame containing information about the available datasets matching the query
+    """
+    cmip6_catalog = pd.read_csv(cmip6_catalog_url)
+
+    if isinstance(context, CMIP6Context):
+        context = context.model_dump()
+
+    search_string_parts = []
+    for k, v in context.items():
+        if v is not None:
+            if isinstance(v, str):
+                search_string_parts.append(f"{k} == '{v}'")
+            else:
+                search_string_parts.append(
+                    "(" + " | ".join([f"{k} == '{w}'" for w in v]) + ")"
+                )
+    search_string = " & ".join(search_string_parts)
+
+    return cmip6_catalog.query(search_string)
+
+
+# ---------------
+# save available simulations
 def save_projections(
-    cordex_projections: pd.DataFrame,
-    cmip6_projections: pd.DataFrame,
-    output_file: str = "resources/projections_all.tsv",
-):
-    pd.concat([cordex_projections, cmip6_projections]).to_csv(
-        output_file, sep="\t", index=False
+    cordex_simulations: pd.DataFrame | None = None,
+    cmip6_simulations: pd.DataFrame | None = None,
+    output_file: str = "resources/projections_all.csv",
+) -> None:
+    """
+    Save the lists of available CORDEX and CMIP6 simulations to a CSV file.
+
+    Parameters
+    ----------
+    cordex_simulations: pd.DataFrame
+        DataFrame containing information about the available CORDEX simulations.
+    cmip6_simulations: pd.DataFrame
+        DataFrame containing information about the available CMIP6 simulations.
+    output_file: str (default: "resources/projections_all.csv")
+        Path to the output file.
+    """
+
+    pd.concat([cordex_simulations, cmip6_simulations]).to_csv(
+        output_file, sep=",", index=False
     )

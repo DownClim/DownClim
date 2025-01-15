@@ -54,7 +54,8 @@ def get_aoi_gadm(aoi: str) -> gpd.geodataframe:
 def get_aoi(
     aoi: str | tuple[float, float, float, float, str] | gpd.GeoDataFrame,
     output_path: str = "results/aois",
-    save_aoi_figure: bool = True,
+    save_aoi_file: bool = False,
+    save_aoi_figure: bool = False,
     save_points_file: bool = False,
     save_points_figure: bool = False,
     log10_eval_pts: int = 4,
@@ -91,12 +92,14 @@ def get_aoi(
             gdf = gpd.GeoDataFrame({"geometry":ob, "NAME_0":["ob"]})
             ```
     output_path: str
-        path to save the aoi and the points files and figures. Default is "results/aois"
-    aoi_figure: bool
+        path to save the aoi and the points files and figures. Default is "results/aois".
+    save_aoi_file: bool
+        if True, save the aoi to a shapefile. Default is False.
+    save_aoi_figure: bool
         if True, plot and save the figure of the aoi. Default is False.
-    points_file: bool
-        if True, plot and save the figure of the points. Default is False.
-    points_figure: bool
+    save_points_file: bool
+        if True,save the points to a shapefile. Default is False.
+    save_points_figure: bool
         if True, plot and save the figure of the points. Default is False.
 
     Returns
@@ -138,15 +141,26 @@ def get_aoi(
         raise ValueError(msg)
 
     if save_points_figure or save_points_file:
-        points = gdf.sample_points(pow(10, log10_eval_pts))
+        points = sample_aoi(gdf, log10_eval_pts)
     if save_aoi_figure:
-        gdf.plot()
-        plt.savefig(f"{output_path}/{aoi_name}.png")
+        plot_figure(gdf, f"{output_path}/{aoi_name}.png")
     if save_points_figure:
-        points.plot()
-        plt.savefig(f"{output_path}/{aoi_name}_pts.png")
+        plot_figure(points, f"{output_path}/{aoi_name}_pts.png")
     if save_points_file:
-        points.to_file(f"{output_path}/{aoi_name}_pts.shp")
-    gdf.to_file(f"{output_path}/{aoi_name}.shp")
-
+        save_to_file(points, f"{output_path}/{aoi_name}_pts.shp")
+    if save_aoi_file:
+        save_to_file(gdf, f"{output_path}/{aoi_name}.shp")
     return gdf
+
+
+def sample_aoi(aoi: gpd.GeoDataFrame, log10_eval_pts: int = 4) -> gpd.GeoDataFrame:
+    return aoi.sample_points(pow(10, log10_eval_pts))
+
+
+def plot_figure(aoi: gpd.GeoDataFrame, filename: str) -> None:
+    aoi.plot()
+    plt.savefig(filename)
+
+
+def save_to_file(gdf: gpd.GeoDataFrame, filename: str) -> None:
+    gdf.to_file(filename)
