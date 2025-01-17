@@ -61,7 +61,7 @@ class DataProduct(MultiValueEnum):
         DataProduct: the data product to retrieve.
     """
 
-    CHELSA = "chelsa", "chelsa2"
+    CHELSA2 = "chelsa", "chelsa2"
     CMIP6 = "cmip6"
     CORDEX = "cordex"
     GSHTD = "gshtd"
@@ -69,7 +69,7 @@ class DataProduct(MultiValueEnum):
 
     @property
     def scale_factor(self) -> dict[str, float]:
-        if self == DataProduct.CHELSA:
+        if self == DataProduct.CHELSA2:
             return {"pr": 0.1, "tas": 0.1, "tasmin": 0.1, "tasmax": 0.1}
         if self == DataProduct.CMIP6:
             return {"pr": 60 * 60 * 24, "tas": 1, "tasmin": 1, "tasmax": 1}
@@ -82,7 +82,7 @@ class DataProduct(MultiValueEnum):
 
     @property
     def add_offset(self) -> dict[str, float]:
-        if self == DataProduct.CHELSA:
+        if self == DataProduct.CHELSA2:
             return {"pr": 0, "tas": -273.15, "tasmin": -273.15, "tasmax": -273.15}
         if self == DataProduct.CMIP6:
             return {"pr": 0, "tas": -273.15, "tasmin": -273.15, "tasmax": -273.15}

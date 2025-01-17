@@ -36,7 +36,7 @@ dependencies = [
   "pandas",
   "xarray",
   "xesmf",
-  "pyesgf",
+  "esgf-pyclient",
   "gcsfs",
   "ee",
   "pydantic",
@@ -70,6 +70,9 @@ Changelog = "https://github.com/sylvainschmitt/DownClim/releases"
 [tool.setuptools_scm]
 write_to = "src/downclim/_version.py"
 
+[tool.setuptools.package-data]
+"downclim.data" = ["*.yaml"]
+
 [tool.pytest.ini_options]
 minversion = "6.0"
 addopts = ["-ra", "--showlocals", "--strict-markers", "--strict-config"]
@@ -92,7 +95,7 @@ report.exclude_also = [
 
 [tool.mypy]
 files = ["src", "tests"]
-python_version = "3.8"
+python_version = "3.10"
 warn_unused_configs = true
 strict = true
 enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]

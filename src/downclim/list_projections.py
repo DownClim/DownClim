@@ -82,15 +82,19 @@ class CORDEXContext(BaseModel):
 
     @field_validator("experiment", mode="before")
     @classmethod
-    def validate_experiment(cls, experiment: str | list[str] | None) -> list[str]:
-        if not any(exp == "historical" for exp in experiment):
+    def validate_experiment(cls, v: str | list[str] | None) -> list[str]:
+        if v is None:
+            msg = "No experiment provided, defaulting to ['historical', 'rcp26']"
+            warnings.warn(msg, stacklevel=2)
+            return ["historical", "rcp26"]
+        if isinstance(v, str):
+            return [v]
+        if not any(exp == "historical" for exp in v):
             msg = """Historical experiment is mandatory to associate with projections.
                 By default we add 'historical' to the list of experiments."""
             warnings.warn(msg, stacklevel=2)
-            if isinstance(experiment, str):
-                return [experiment, "historical"]
-            return [*experiment, "historical"]
-        return experiment
+            return [*v, "historical"]
+        return v
 
 
 def list_available_cordex_simulations(
@@ -249,15 +253,15 @@ class CMIP6Context(BaseModel):
 
     @field_validator("experiment_id", mode="before")
     @classmethod
-    def validate_experiment_id(cls, experiment: str | list[str] | None) -> list[str]:
-        if not any(exp == "historical" for exp in experiment):
+    def validate_experiment_id(cls, v: str | list[str] | None) -> list[str]:
+        if not any(exp == "historical" for exp in v):
             msg = """Historical experiment is mandatory to associate with projections.
                 By default we add 'historical' to the list of experiments."""
             warnings.warn(msg, stacklevel=2)
-            if isinstance(experiment, str):
-                return [experiment, "historical"]
-            return [*experiment, "historical"]
-        return experiment
+            if isinstance(v, str):
+                return [v, "historical"]
+            return [*v, "historical"]
+        return v
 
 
 def list_available_cmip6_simulations(
