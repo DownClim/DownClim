@@ -26,7 +26,7 @@ from .utils import (
 )
 
 
-def _get_chelsa_one_file(
+def _get_chelsa2_one_file(
     aois_names: list[str],
     aois_bounds: list[pd.DataFrame],
     var: str,
@@ -47,7 +47,7 @@ def _get_chelsa_one_file(
     """
 
     chelsa_files = {}
-    base_url = data_urls["chelsa"]
+    base_url = data_urls["chelsa2"]
 
     if time_freq == Frequency.MONTHLY:
         url = f"{base_url}/monthly/{var}/CHELSA_{var}_{month:02d}_{year}_V.2.1.tif"
@@ -74,7 +74,7 @@ def _get_chelsa_one_file(
     return chelsa_files
 
 
-def _get_chelsa_year(
+def _get_chelsa2_year(
     aois_names: list[str],
     aois_bounds: list[pd.DataFrame],
     year: int,
@@ -105,7 +105,7 @@ def _get_chelsa_year(
             f'Getting year "{year}" for variables "{var}" and areas of interest : "{aois_names}"'
         )
         chelsa_datas = [
-            _get_chelsa_one_file(aois_names, aois_bounds, var, month, year, time_freq)
+            _get_chelsa2_one_file(aois_names, aois_bounds, var, month, year, time_freq)
             for month in range(1, 13)
         ]
 
@@ -135,7 +135,7 @@ def _get_chelsa_year(
     return paths
 
 
-def get_chelsa(
+def get_chelsa2(
     aois: Iterable[gpd.GeoDataFrame],
     variables: Iterable[str],
     periods: tuple[(int, int)] = ((1980, 2005), (2006, 2019)),
@@ -206,7 +206,7 @@ def get_chelsa(
     for var in variables:
         paths.append(
             pool.starmap_async(
-                _get_chelsa_year,
+                _get_chelsa2_year,
                 [
                     (aois_names, aois_bounds, year, var, time_frequency, tmp_directory)
                     for year in years

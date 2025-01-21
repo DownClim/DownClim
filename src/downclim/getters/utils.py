@@ -94,7 +94,7 @@ class DataProduct(MultiValueEnum):
         raise ValueError(msg)
 
     @classmethod
-    def _missing_(cls, value: Any) -> None | DataProduct:
+    def _missing_(cls, value: Any) -> DataProduct:
         if isinstance(value, str):
             value = value.lower()
             for member in cls:

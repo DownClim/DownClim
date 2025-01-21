@@ -67,7 +67,7 @@ def get_aoi(
 
     Parameters
     ----------
-    aoi: str | List[float, float, float, float] | geopandas.GeoDataFrame
+    aoi: str | tuple[float, float, float, float, str] | geopandas.GeoDataFrame
         if aoi is a string:
             calls the pygadm library to retrieve borders of the aoi, using the
             administrative name (more information at https://pygadm.readthedocs.io/en/latest/usage.html#find-administrative-names)
