@@ -7,7 +7,7 @@ import geopandas as gpd
 import pytest
 from shapely import MultiPolygon
 
-from downclim.getters.get_aoi import get_aoi
+from downclim.dataset.aoi import get_aoi
 
 
 def test_get_aoi():

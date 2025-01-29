@@ -11,35 +11,25 @@ import yaml
 from importlib_resources import files
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
+from .dataset.aoi import get_aoi
+from .dataset.cmip6 import CMIP6Context
+from .dataset.cordex import CORDEXContext
+from .dataset.utils import Aggregation, DataProduct, Frequency
 from .downscale import DownscaleMethod
-from .getters.get_aoi import get_aoi
-from .getters.utils import Aggregation, DataProduct, Frequency
-from .list_projections import CMIP6Context, CORDEXContext
 
 
-def to_list(v: Any) -> list[Any]:
-    if not isinstance(v, list):
-        return [v]
-    return v
-
-
-class DownclimContext(BaseModel):
+class DownClimContext(BaseModel):
     """Class to define the general context for the Downclim package.
     This includes all the parameters needed to run the downscaling process.
     """
 
-    aoi: (
-        str
-        | tuple[float, float, float, float, str]
-        | gpd.GeoDataFrame
-        | Iterable[str]
-        | Iterable[tuple[float, float, float, float, str]]
-        | Iterable[gpd.GeoDataFrame]
-    ) = Field(
-        example=["Vanuatu"],
-        description="Areas of interest to downscale data. Mandatory field. Can be a string (name of the AOI), a tuple of 5 floats (minx, miny, maxx, maxy, name), a GeoDataFrame or a list of any of these.",
+    aoi: str | tuple[float, float, float, float, str] | gpd.GeoDataFrame | list[Any] = (
+        Field(
+            example=["Vanuatu"],
+            description="Areas of interest to downscale data. Mandatory field. Can be a string (name of the AOI), a tuple of 5 floats (minx, miny, maxx, maxy, name), a GeoDataFrame or a list of any of these.",
+        )
     )
-    variables: str | Iterable[str] = Field(
+    variable: str | list[str] = Field(
         default=["tas", "pr"],
         example=["pr", "tas", "tasmin", "tasmax"],
         description="Variables to downscale.",
@@ -82,17 +72,17 @@ class DownclimContext(BaseModel):
         example=CMIP6Context(),
         description="CMIP6Context object to use for defining the CMIP6 data required.",
     )
-    baseline_years: tuple[int, int] = Field(
+    baseline_year: tuple[int, int] = Field(
         default=(1980, 2005),
         example=(1980, 2005),
         description="Interval of years to use for the baseline period.",
     )
-    evaluation_years: tuple[int, int] = Field(
+    evaluation_year: tuple[int, int] = Field(
         default=(2006, 2019),
         example=(2006, 2019),
         description="Interval of years to use for the evaluation period.",
     )
-    projection_years: tuple[int, int] = Field(
+    projection_year: tuple[int, int] = Field(
         default=(2071, 2100),
         example=(2071, 2100),
         description="Interval of years to use for the projection period.",
@@ -140,7 +130,15 @@ class DownclimContext(BaseModel):
     )
 
     class Config:
+        """Pydantic configuration for the DownClimContext class."""
+
         arbitrary_types_allowed = True
+
+    @classmethod
+    def to_list(cls, v: Any) -> list[Any]:
+        if not isinstance(v, list):
+            return [v]
+        return v
 
     @classmethod
     def get_data_product(cls, v: str) -> DataProduct:
@@ -159,16 +157,18 @@ class DownclimContext(BaseModel):
     @classmethod
     def validate_aoi(
         cls,
-        v: str
-        | tuple[float, float, float, float, str]
-        | gpd.GeoDataFrame
-        | Iterable[str]
-        | Iterable[tuple[float, float, float, float, str]]
-        | Iterable[gpd.GeoDataFrame],
+        v: str | tuple[float, float, float, float, str] | gpd.GeoDataFrame | list[Any],
     ) -> list[gpd.GeoDataFrame]:
-        return [get_aoi(aoi) for aoi in to_list(v)]
+        return [get_aoi(aoi) for aoi in cls.to_list(v)]
 
-    @field_validator("projection_years", mode="after")
+    @field_validator("variable", mode="after")
+    @classmethod
+    def validate_variable(cls, v: Any | list[Any]) -> list[str]:
+        if isinstance(v, str):
+            return cls.to_list(v)
+        return [str(var) for var in v]
+
+    @field_validator("projection_year", mode="after")
     @classmethod
     def check_projection_years(cls, v: tuple[int, int]) -> tuple[int, int]:
         if v[0] <= 2015:
@@ -328,14 +328,14 @@ def generate_DownClimContext_template_file(output_file: str) -> None:
     )
 
 
-def define_DownClimContext_from_file(file: str) -> DownclimContext:
+def define_DownClimContext_from_file(file: str) -> DownClimContext:
     """Reads a DownClimContext from a file.
 
     Args:
         file (str): File to read the context from.
 
     Returns:
-        DownclimContext: The context read from the file.
+        DownClimContext: The context read from the file.
 
     Raises:
         ValueError: if YAML has no or wrong 'aoi' mandatory value
@@ -353,11 +353,11 @@ def define_DownClimContext_from_file(file: str) -> DownclimContext:
         msg = "Mandatory field 'aoi' is not present in the yaml file."
         raise ValueError(msg)
 
-    keys_years = ["baseline_years", "evaluation_years", "projection_years"]
+    keys_years = ["baseline_year", "evaluation_year", "projection_year"]
     for key in keys_years:
         if key in config:
             config[key] = tuple(
                 int(year) for year in config[key].strip("()").split(",")
             )
 
-    return DownclimContext.model_validate(config)
+    return DownClimContext.model_validate(config)

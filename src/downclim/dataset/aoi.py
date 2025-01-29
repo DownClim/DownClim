@@ -8,8 +8,8 @@ import matplotlib.pyplot as plt
 import pygadm
 
 
-def get_aois_informations(
-    aois: list[gpd.GeoDataFrame],
+def get_aoi_informations(
+    aoi: list[gpd.GeoDataFrame],
 ) -> tuple[list[str], list[tuple[float, float, float, float]]]:
     """Retrieve the names and bounds of a list of areas of interest defined by GeoDataFrame.
 
@@ -23,8 +23,8 @@ def get_aois_informations(
         - List of names of the areas of interest.
         - List of bounds of the areas of interest (as a tuple).
     """
-    aois_names = [aoi.NAME_0.to_numpy()[0] for aoi in aois]
-    aois_bounds = [aoi.bounds for aoi in aois]
+    aois_names = [a.NAME_0.to_numpy()[0] for a in aoi]
+    aois_bounds = [a.bounds for a in aoi]
     return aois_names, aois_bounds
 
 

@@ -61,7 +61,7 @@ class DataProduct(MultiValueEnum):
         DataProduct: the data product to retrieve.
     """
 
-    CHELSA2 = "chelsa", "chelsa2"
+    CHELSA2 = "chelsa2", "chelsa"
     CMIP6 = "cmip6"
     CORDEX = "cordex"
     GSHTD = "gshtd"
@@ -141,14 +141,14 @@ scale_factors = {
     "chelsa2": {"pr": 0.1, "tas": 0.1, "tasmin": 0.1, "tasmax": 0.1},
     "cmip6": {"pr": 60 * 60 * 24, "tas": 1, "tasmin": 1, "tasmax": 1},
     "cordex": {"pr": 60 * 60 * 24, "tas": 1, "tasmin": 1, "tasmax": 1},
-    "gshtd": 0.02,
+    "gshtd": {"tas": 0.02, "tasmin": 0.02, "tasmax": 0.02},
 }
 
 add_offsets = {
     "chelsa2": {"pr": 0, "tas": -273.15, "tasmin": -273.15, "tasmax": -273.15},
     "cmip6": {"pr": 0, "tas": -273.15, "tasmin": -273.15, "tasmax": -273.15},
     "cordex": {"pr": 0, "tas": -273.15, "tasmin": -273.15, "tasmax": -273.15},
-    "gshtd": -273.15,
+    "gshtd": {"tas": -273.15, "tasmin": -273.15, "tasmax": -273.15},
 }
 
 

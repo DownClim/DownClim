@@ -34,4 +34,4 @@ tmp_dir: "tmp"
 keep_tmp_dir: "False"
 
 # data access
-esgf_credentials: "../config/credentials_esgf.yaml"
+esgf_credentials: "../config/esgf_credential.yaml"

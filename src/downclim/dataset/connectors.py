@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import ee
 import gcsfs
@@ -13,7 +14,8 @@ data_urls = {
     "ee": "https://earthengine-highvolume.googleapis.com",
     "gcsfs_cmip6": "https://storage.googleapis.com/cmip6/cmip6-zarr-consolidated-stores.csv",
     "esgf": "https://esgf-node.ipsl.upmc.fr/esg-search",
-    "chelsa": "https://os.zhdk.cloud.switch.ch/envicloud/chelsa/chelsa_V2/GLOBAL",
+    "chelsa2": "https://os.zhdk.cloud.switch.ch/envicloud/chelsa/chelsa_V2/GLOBAL",
+    "cmip6": "https://storage.googleapis.com/cmip6/cmip6-zarr-consolidated-stores.csv",
 }
 
 ee_image_collection = {
@@ -22,7 +24,7 @@ ee_image_collection = {
 }
 
 
-def connect_to_ee(**kwargs):
+def connect_to_ee(**kwargs: dict[str, Any]) -> None:
     """
     Connect to Google Earth Engine using the `earthengine-highvolume`.
 
@@ -66,11 +68,14 @@ def connect_to_esgf(esgf_credential: str, server: str) -> pyesgf.SearchConnectio
     R
 
     """
-    with Path(esgf_credential).open() as stream:
+    with Path(esgf_credential).open(encoding="utf-8") as stream:
         creds = yaml.safe_load(stream)
     lm = LogonManager()
     lm.logon_with_openid(
-        openid=creds["openid"], password=creds["pwd"], interactive=False, bootstrap=True
+        openid=creds["openid"],
+        password=creds["password"],
+        interactive=False,
+        bootstrap=True,
     )
 
     return SearchConnection(server, distrib=True)

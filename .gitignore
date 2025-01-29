@@ -28,7 +28,7 @@ img
 data
 achille
 # credentials
-config/credentials_esgf.yml
+config/esgf_credential.yaml
 test.tsv
 results0
 # snakemake

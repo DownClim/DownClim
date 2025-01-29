@@ -4,22 +4,105 @@ import os
 import re
 import shutil
 import subprocess
+import warnings
+from collections.abc import Iterable
 from pathlib import Path
 
 import geopandas as gpd
 import multiprocess as mp
 import xarray as xr
 import xesmf as xe
+from pydantic import BaseModel, Field, field_validator
 
 from .connectors import connect_to_esgf, data_urls
-from .utils import (
-    prep_dataset,
-    split_period,
-)
+from .utils import prep_dataset, split_period
+
+
+class CORDEXContext(BaseModel):
+    """Context about the query on the CORDEX dataset. Entries of the dictionary can be either `str` or `Iterables` (e.g. `list`) if multiple values are provided. These following keys are available, and correspond to the keys defined defined on ESGF nodes, cf. https://esgf-node.ipsl.upmc.fr/search/cordex-ipsl/ ."""
+
+    project: str | list[str] | None = Field(
+        default="CORDEX", example="CORDEX", description="Name of the project"
+    )
+    product: str | list[str] | None = Field(
+        default="output", description="Name of the product"
+    )
+    domain: str | list[str] | None = Field(description="CORDEX domain(s) to look for")
+    institute: str | list[str] | None = Field(
+        default=None, description="Institute name that produced the data"
+    )
+    driving_model: str | list[str] | None = Field(
+        default=None,
+        description="Name of the global climate model used to drive the RCM",
+    )
+    experiment: str | list[str] | None = Field(
+        default=["historical", "rcp26"],
+        description="Name of the experiment type of the simulation",
+    )
+    experiment_family: str | list[str] | None = Field(
+        default=None,
+        description="Type of experiment : weither 'RCP' or 'Historical' or 'All'",
+    )
+    ensemble: str | list[str] | None = Field(
+        default="r1i1p1", description="Ensemble member"
+    )
+    rcm_model: str | list[str] | None = Field(
+        default=None, description="Name of the regional climate model"
+    )
+    downscaling_realisation: str | list[str] | None = Field(
+        default=None, description="Version of the downscaling realisation"
+    )
+    time_frequency: str | None = Field(
+        default="mon", description="Time frequency of the data"
+    )
+    variable: str | list[str] | None = Field(
+        default=["tas", "tasmin", "tasmax", "pr"], description="Variables requested"
+    )
+    variable_long_name: str | list[str] | None = Field(
+        default=None, description="Long name of the variables"
+    )
+
+    @field_validator("project")
+    @classmethod
+    def validate_project(
+        cls, project: str | Iterable[str] | None
+    ) -> str | Iterable[str]:
+        if not project:
+            msg = "No project provided, defaulting to 'CORDEX'"
+            warnings.warn(msg, stacklevel=2)
+            return "CORDEX"
+        return project
+
+    @field_validator("product")
+    @classmethod
+    def validate_product(
+        cls, product: str | Iterable[str] | None
+    ) -> str | Iterable[str]:
+        if not product:
+            msg = "No product provided, defaulting to 'output'"
+            warnings.warn(msg, stacklevel=2)
+            return "output"
+        return product
+
+    @field_validator("experiment", mode="before")
+    @classmethod
+    def validate_experiment(cls, v: str | list[str] | None) -> list[str]:
+        if v is None:
+            msg = "No experiment provided, defaulting to ['historical', 'rcp26']"
+            warnings.warn(msg, stacklevel=2)
+            return ["historical", "rcp26"]
+        if isinstance(v, str):
+            return [v]
+        if not any(exp == "historical" for exp in v):
+            msg = """Historical experiment is mandatory to associate with projections.
+                By default we add 'historical' to the list of experiments."""
+            warnings.warn(msg, stacklevel=2)
+            return [*v, "historical"]
+        return v
 
 
 def _get_wget_download_lines(wget_file: str) -> list[str]:
-    with Path(wget_file).open() as reader:
+    with Path(wget_file).open(encoding="utf-8") as reader:
         return [
             num for num, line in enumerate(reader, 1) if re.match(r".*\.(nc)", line)
         ]
@@ -30,7 +113,7 @@ def _get_cordex_wget(
     i: int,
     periods: tuple[(int, int)],
     temp_fold: str,
-):
+) -> bool:
     script_name = f"{temp_fold}/wget_{i}.sh"
 
     # Write script to file
@@ -55,7 +138,9 @@ def _get_cordex_wget(
 def get_cordex(
     aois: list[gpd.GeoDataFrame],
     variables: list[str],
-    periods: tuple[(int, int)] = ((1980, 2005), (2006, 2019), (2071, 2100)),
+    baseline_year: tuple[int, int] = (1980, 2005),
+    evaluation_year: tuple[int, int] = (2006, 2019),
+    projection_year: tuple[int, int] = (2071, 2100),
     # time_frequency: str = "mon",
     aggregation: str = "monthly-means",
     domain: str = "EUR-11",
@@ -157,6 +242,7 @@ def get_cordex(
     ds_rcp = prep_dataset(ds_rcp)
 
     check_file = "toto.nc"
+    periods = [baseline_year, evaluation_year, projection_year]
     # regrid and write per country
     for aoi in aois:
         base_file = f"{Path(check_file).parent}/{aoi}_base.nc"
