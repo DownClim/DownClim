@@ -8,8 +8,9 @@ import pandas as pd
 import pyesgf
 
 from .dataset.cmip6 import CMIP6Context
-from .dataset.connectors import connect_to_esgf, data_urls
+from .dataset.connectors import connect_to_esgf
 from .dataset.cordex import CORDEXContext
+from .dataset.utils import DataProduct
 
 
 # CORDEX
@@ -17,7 +18,7 @@ from .dataset.cordex import CORDEXContext
 def list_available_cordex_simulations(
     cordex_context: dict[str, str | Iterable[str]] | CORDEXContext,
     esgf_credential: str = "config/esgf_credential.yaml",
-    server: str = data_urls["esgf"],
+    server: str = DataProduct.CORDEX.url,
 ) -> pd.DataFrame:
     """List all available CORDEX simulations available on esgf node for a given context.
 
@@ -200,7 +201,7 @@ def list_available_cmip6_simulations(
 
 def inspect_cmip6(
     context: dict[str, str | Iterable[str]],
-    cmip6_catalog_url: str = data_urls["gcsfs_cmip6"],
+    cmip6_catalog_url: str = DataProduct.CMIP6.url,
 ) -> pd.DataFrame:
     """
     Inspects Google Cloud File System to get information about the available CMIP6 datasets provided the context.
@@ -222,7 +223,7 @@ def inspect_cmip6(
             - zstore: str, e.g "gs://cmip6/CMIP6/ScenarioMIP/IPSL/IPSL-CM6A-LR/ssp126/r1i1p1f1/Amon/tas/gr/v20190903"
             - dcpp_init_year: str, e.g "1850", "2015"
             - version: str, e.g "20190903"
-    cmip6_catalog_url: str (default: data_urls["gcsfs_cmip6"])
+    cmip6_catalog_url: str (default: DataProduct.CMIP6.url)
         URL to the CMIP6 catalog on the Google Cloud File System.
 
     Returns

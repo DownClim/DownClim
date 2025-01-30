@@ -59,6 +59,8 @@ class DataProductProperties:
         period (tuple[int, int]): period of the data product in the format (begin_year, end_year).
         scale_factor (dict[str, float]): scale factor for each variable in the data product.
         add_offset (dict[str, float]): add offset for each variable in the data product.
+        url (str): url to download the data product.
+            If the data is stored on earthengine, provides the image collection path instead.
 
     """
 
@@ -66,6 +68,7 @@ class DataProductProperties:
     period: tuple[int, int]
     scale_factor: dict[str, float]
     add_offset: dict[str, float]
+    url: str
 
 
 class DataProduct(Enum):
@@ -83,26 +86,30 @@ class DataProduct(Enum):
         (1980, 2019),
         {"pr": 0.1, "tas": 0.1, "tasmin": 0.1, "tasmax": 0.1},
         {"pr": 0, "tas": -273.15, "tasmin": -273.15, "tasmax": -273.15},
+        "https://os.zhdk.cloud.switch.ch/envicloud/chelsav2/GLOBAL",
     )
     CMIP6 = (
         "cmip6",
         (1850, 2100),
         {"pr": 60 * 60 * 24, "tas": 1, "tasmin": 1, "tasmax": 1},
         {"pr": 0, "tas": -273.15, "tasmin": -273.15, "tasmax": -273.15},
+        "https://storage.googleapis.com/cmip6/cmip6-zarr-consolidated-stores.csv",
     )
     CORDEX = (
         "cordex",
         (1850, 2100),
         {"pr": 60 * 60 * 24, "tas": 1, "tasmin": 1, "tasmax": 1},
         {"pr": 0, "tas": -273.15, "tasmin": -273.15, "tasmax": -273.15},
+        "https://esgf-node.ipsl.upmc.fr/esg-search",
     )
     GSHTD = (
         "gshtd",
         (2001, 2020),
         {"tas": 0.02, "tasmin": 0.02, "tasmax": 0.02},
         {"tas": -273.15, "tasmin": -273.15, "tasmax": -273.15},
+        "projects/sat-io/open-datasets/GSHTD/",
     )
-    CHIRPS = "chirps", (1981, 2024), {"pr": 1}, {"pr": 0}
+    CHIRPS = "chirps", (1980, 2024), {"pr": 1}, {"pr": 0}, "UCSB-CHG/CHIRPS/DAILY"
 
     @classmethod
     def _missing_(cls, value: Any) -> DataProduct:

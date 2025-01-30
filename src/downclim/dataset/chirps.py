@@ -8,9 +8,10 @@ import pandas as pd
 import xarray as xr
 
 from .aoi import get_aoi_informations
-from .connectors import connect_to_ee, ee_image_collection
+from .connectors import connect_to_ee
 from .utils import (
     Aggregation,
+    DataProduct,
     Frequency,
     get_monthly_climatology,
     get_monthly_mean,
@@ -55,7 +56,7 @@ def get_chirps_single_climatology(
     )
     dmin, dmax = split_period(period)
 
-    ic = ee.ImageCollection(ee_image_collection["CHIRPS"]).filterDate(dmin, dmax)
+    ic = ee.ImageCollection(DataProduct.CHIRPS.url).filterDate(dmin, dmax)
     geom = ee.Geometry.Rectangle(*aoi_bounds.to_numpy()[0])
     ds = xr.open_mfdataset(
         [ic], engine="ee", projection=ic.first().select(0).projection(), geometry=geom

@@ -12,9 +12,10 @@ import xesmf as xe
 from pydantic import BaseModel, Field, field_validator
 
 from .aoi import get_aoi_informations
-from .connectors import connect_to_gcfs, data_urls
+from .connectors import connect_to_gcfs
 from .utils import (
     Aggregation,
+    DataProduct,
     Frequency,
     get_monthly_climatology,
     prep_dataset,
@@ -157,7 +158,7 @@ def get_cmip6(
         raise ValueError(msg)
 
     gcfs = connect_to_gcfs()
-    df_cmip6 = _get_cmip6_catalog(data_urls["cmip6"])
+    df_cmip6 = _get_cmip6_catalog(DataProduct.CMIP6.url)
     a = []
 
     search_string = f"""

@@ -14,8 +14,8 @@ import xarray as xr
 import xesmf as xe
 from pydantic import BaseModel, Field, field_validator
 
-from .connectors import connect_to_esgf, data_urls
-from .utils import prep_dataset, split_period
+from .connectors import connect_to_esgf
+from .utils import DataProduct, prep_dataset, split_period
 
 
 class CORDEXContext(BaseModel):
@@ -210,7 +210,7 @@ def get_cordex(
             "var": variables,
         }
         # connect
-        connector = connect_to_esgf(esgf_credential, server=data_urls["esgf"])
+        connector = connect_to_esgf(esgf_credential, server=DataProduct.CORDEX.url)
         ctx = connector.new_context(facets="*", **context)
         all_scripts = [res.file_context().get_download_script() for res in ctx.search()]
 

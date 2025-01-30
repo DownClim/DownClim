@@ -14,13 +14,11 @@ import xarray as xr
 from multiprocess import Pool
 
 from .aoi import get_aoi_informations
-from .connectors import data_urls
 from .utils import (
     Aggregation,
+    DataProduct,
     Frequency,
-    add_offsets,
     get_monthly_climatology,
-    scale_factors,
     split_period,
     variables_attributes,
 )
@@ -47,7 +45,7 @@ def _get_chelsa2_one_file(
     """
 
     chelsa_files = {}
-    base_url = data_urls["chelsa2"]
+    base_url = DataProduct.CHELSA.url
 
     if time_freq == Frequency.MONTHLY:
         url = f"{base_url}/monthly/{variable}/CHELSA_{variable}_{month:02d}_{year}_V.2.1.tif"
@@ -124,8 +122,9 @@ def _get_chelsa2_year(
                 del chelsa_data[aoi_n]
             ds_chelsa = ds_chelsa[["time", "x", "y", variable]]
             ds_chelsa[variable].values = (
-                ds_chelsa[variable].to_numpy() * scale_factors["chelsa2"][variable]
-                + add_offsets["chelsa2"][variable]
+                ds_chelsa[variable].to_numpy()
+                * DataProduct.CHELSA.scale_factor[variable]
+                + DataProduct.CHELSA.add_offset[variable]
             )
             ds_chelsa[variable].attrs = variables_attributes[variable]
             output_file = f"{tmp_directory}/CHELSA_{aoi_n}_{variable}_{year}.nc"
@@ -215,7 +214,8 @@ def get_chelsa2(
     paths = []
     for var in variable:
         paths.append(
-            pool.starmap_async(
+            #            pool.starmap_async(
+            pool.starmap(
                 _get_chelsa2_year,
                 [
                     (aoi_name, aoi_bound, year, var, frequency, tmp_dir)

@@ -9,14 +9,13 @@ import pandas as pd
 import xarray as xr
 
 from .aoi import get_aoi_informations
-from .connectors import connect_to_ee, ee_image_collection
+from .connectors import connect_to_ee
 from .utils import (
     Aggregation,
+    DataProduct,
     Frequency,
-    add_offsets,
     get_monthly_climatology,
     get_monthly_mean,
-    scale_factors,
     split_period,
     variables_attributes,
 )
@@ -37,9 +36,9 @@ def get_gshtd_single(
     dmin, dmax = split_period(period)
 
     collection = {"tas": "TMEAN", "tasmin": "TMIN", "tasmax": "TMAX"}
-    ic = ee.ImageCollection(
-        ee_image_collection["GSHTD"] + collection[variable]
-    ).filterDate(dmin, dmax)
+    ic = ee.ImageCollection(DataProduct.GSHTD.url + collection[variable]).filterDate(
+        dmin, dmax
+    )
     geom = ee.Geometry.Rectangle(*aoi_bounds.to_numpy()[0])
     ds = xr.open_dataset(
         ic, engine="ee", projection=ic.first().select(0).projection(), geometry=geom
@@ -58,7 +57,8 @@ def get_gshtd_single(
         raise ValueError(msg)
     ds = ds.where(ds.b1 > 0)
     ds["b1"] = (
-        ds.b1 * scale_factors["gshtd"][variable] + add_offsets["gshtd"][variable]
+        ds.b1 * DataProduct.GSHTD.scale_factor[variable]
+        + DataProduct.GSHTD.add_offset[variable]
     )  # K to °C
     ds.b1.attrs = variables_attributes[variable]
     return ds.rename({"b1": variable})

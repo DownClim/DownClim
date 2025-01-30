@@ -14,7 +14,7 @@ data_urls = {
     "ee": "https://earthengine-highvolume.googleapis.com",
     "gcsfs_cmip6": "https://storage.googleapis.com/cmip6/cmip6-zarr-consolidated-stores.csv",
     "esgf": "https://esgf-node.ipsl.upmc.fr/esg-search",
-    "chelsa2": "https://os.zhdk.cloud.switch.ch/envicloud/chelsa/chelsa_V2/GLOBAL",
+    "chelsa2": "https://os.zhdk.cloud.switch.ch/envicloud/chelsav2/GLOBAL",
     "cmip6": "https://storage.googleapis.com/cmip6/cmip6-zarr-consolidated-stores.csv",
 }
 

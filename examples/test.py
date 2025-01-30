@@ -7,7 +7,7 @@ from downclim.dataset.cmip6 import CMIP6Context, get_cmip6
 from downclim.dataset.cordex import CORDEXContext
 from downclim.dataset.gshtd import get_gshtd
 from downclim.downclim import DownClimContext
-from downclim.getters import get_baseline
+from downclim.getters import get_baseline_product
 from downclim.list_projections import (
     list_available_cmip6_simulations,
     list_available_cordex_simulations,
@@ -23,16 +23,14 @@ aois_names, aois_bounds = get_aoi_informations(aoi)
 get_chelsa2(
     aoi=[aoi1, aoi2],
     variable=["pr", "tas", "tasmin", "tasmax"],
-    baseline_year=(1980, 1981),
-    evaluation_year=(2006, 2007),
+    period=(1980, 1981),
     keep_tmp_dir=True,
 )
 
 # Get CHIRPS data
 get_chirps(
     aoi=[aoi1, aoi2],
-    baseline_year=(1980, 1981),
-    evaluation_year=(2006, 2007),
+    period=(1981, 1982),
 )
 
 # Get GSHTD data
@@ -40,8 +38,7 @@ get_chirps(
 get_gshtd(
     aoi=[aoi1, aoi2],
     variable=["tas", "tasmin", "tasmax"],
-    baseline_year=(2001, 2002),
-    evaluation_year=(2006, 2007),
+    period=(2001, 2002),
 )
 
 # Get CMIP6 data
@@ -95,4 +92,4 @@ cmip6_context = CMIP6Context(
 cmip6_simulations = list_available_cmip6_simulations(cmip6_context)
 
 # Get baseline data
-get_baseline(downclim_context)
+get_baseline_product(downclim_context)
