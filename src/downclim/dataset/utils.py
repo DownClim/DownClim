@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime as dt
+from enum import Enum
 from typing import Any
 
 import numpy as np
@@ -48,11 +50,26 @@ class Aggregation(MultiValueEnum):
         raise ValueError(msg)
 
 
-class DataProduct(MultiValueEnum):
-    """Class to define the data products handled.
+@dataclass
+class DataProductProperties:
+    """Data class to define the properties of the data products handled.
 
     Args:
-        MultiValueEnum ('str'): string representation of the data product to retrieve.
+        product_name (str): name of the data product.
+        period (tuple[int, int]): period of the data product in the format (begin_year, end_year).
+        scale_factor (dict[str, float]): scale factor for each variable in the data product.
+        add_offset (dict[str, float]): add offset for each variable in the data product.
+
+    """
+
+    product_name: str
+    period: tuple[int, int]
+    scale_factor: dict[str, float]
+    add_offset: dict[str, float]
+
+
+class DataProduct(Enum):
+    """Enum Class to define the data products handled.
 
     Raises:
         ValueError: if no method exists for downloading the data product.
@@ -61,37 +78,31 @@ class DataProduct(MultiValueEnum):
         DataProduct: the data product to retrieve.
     """
 
-    CHELSA2 = "chelsa2", "chelsa"
-    CMIP6 = "cmip6"
-    CORDEX = "cordex"
-    GSHTD = "gshtd"
-    CHIRPS = "chirps"
-
-    @property
-    def scale_factor(self) -> dict[str, float]:
-        if self == DataProduct.CHELSA2:
-            return {"pr": 0.1, "tas": 0.1, "tasmin": 0.1, "tasmax": 0.1}
-        if self == DataProduct.CMIP6:
-            return {"pr": 60 * 60 * 24, "tas": 1, "tasmin": 1, "tasmax": 1}
-        if self == DataProduct.CORDEX:
-            return {"pr": 60 * 60 * 24, "tas": 1, "tasmin": 1, "tasmax": 1}
-        if self == DataProduct.GSHTD:
-            return {"tas": 0.02, "tasmin": 0.02, "tasmax": 0.02}
-        msg = f"Unknown or not implemented scale factor for data product '{self}'."
-        raise ValueError(msg)
-
-    @property
-    def add_offset(self) -> dict[str, float]:
-        if self == DataProduct.CHELSA2:
-            return {"pr": 0, "tas": -273.15, "tasmin": -273.15, "tasmax": -273.15}
-        if self == DataProduct.CMIP6:
-            return {"pr": 0, "tas": -273.15, "tasmin": -273.15, "tasmax": -273.15}
-        if self == DataProduct.CORDEX:
-            return {"pr": 0, "tas": -273.15, "tasmin": -273.15, "tasmax": -273.15}
-        if self == DataProduct.GSHTD:
-            return {"tas": -273.15, "tasmin": -273.15, "tasmax": -273.15}
-        msg = f"Unknown or not implemented add offset for data product '{self}'."
-        raise ValueError(msg)
+    CHELSA = (
+        "chelsa",
+        (1980, 2019),
+        {"pr": 0.1, "tas": 0.1, "tasmin": 0.1, "tasmax": 0.1},
+        {"pr": 0, "tas": -273.15, "tasmin": -273.15, "tasmax": -273.15},
+    )
+    CMIP6 = (
+        "cmip6",
+        (1850, 2100),
+        {"pr": 60 * 60 * 24, "tas": 1, "tasmin": 1, "tasmax": 1},
+        {"pr": 0, "tas": -273.15, "tasmin": -273.15, "tasmax": -273.15},
+    )
+    CORDEX = (
+        "cordex",
+        (1850, 2100),
+        {"pr": 60 * 60 * 24, "tas": 1, "tasmin": 1, "tasmax": 1},
+        {"pr": 0, "tas": -273.15, "tasmin": -273.15, "tasmax": -273.15},
+    )
+    GSHTD = (
+        "gshtd",
+        (2001, 2020),
+        {"tas": 0.02, "tasmin": 0.02, "tasmax": 0.02},
+        {"tas": -273.15, "tasmin": -273.15, "tasmax": -273.15},
+    )
+    CHIRPS = "chirps", (1981, 2024), {"pr": 1}, {"pr": 0}
 
     @classmethod
     def _missing_(cls, value: Any) -> DataProduct:

@@ -138,11 +138,12 @@ def _get_chelsa2_year(
 def get_chelsa2(
     aoi: list[gpd.GeoDataFrame],
     variable: list[str],
-    baseline_year: tuple[int, int] = (1980, 2005),
-    evaluation_year: tuple[int, int] = (2006, 2019),
+    period: tuple[int, int] = (1980, 2005),
     frequency: Frequency = Frequency.MONTHLY,
     aggregation: Aggregation = Aggregation.MONTHLY_MEAN,
-    nb_thread: int = 4,
+    nb_threads: int = 4,
+    output_dir: str = "./results/chelsa2",
+    tmp_dir: str = "./results/tmp/chelsa2",
     keep_tmp_dir: bool = False,
 ) -> None:
     """
@@ -160,41 +161,43 @@ def get_chelsa2(
         List of variables to collect. For CHELSAv2, choose in :
             "clt", "cmi", "hurs", "pet", "pr", "rsds", "sfcWind",
             "tas", "tasmin", "tasmax", "vpd"
-    baseline_year: tuple[(int, int)]
+    period: tuple[(int, int)]
         Tuple of time frame to retrieve, and build the climatologies on.
-        Should correspond to the historical period.
         Must be provided as a list of pairs of integers defining the start and end years of the period.
         e.g.: (1980, 2005).
-    evaluation_year: tuple[(int, int)]
-        Tuple of time frame to retrieve, and build the climatologies on.
-        Should correspond to the evaluation period.
-        Must be provided as a list of pairs of integers defining the start and end years of the period.
-        e.g.: (2006, 2019).
     time_frequency: Frequency
         Time frequency of Chelsa data (currently only monthly available).
     aggregation: Aggregation
         Aggregation method to build the climatology. Default is "monthly-means".
-    nb_thread: int
+    nb_threads: int
         Number of threads to use for parallel downloading.
+    output_dir: str
+        Output directory where the CHELSA2 climatology will be stored.
+        Default is "./results/chelsa2".
+    tmp_dir: str
+        Temporary directory where the intermediate CHELSA files will be stored.
+        Default is "./results/tmp/chelsa2".
     keep_tmp_dir: bool
         Whether to keep the temporary directory or not. This includes the intermediate CHELSA files
         downloaded for each area of interest, each variable and each year.
-        Tmp directory is located at "./results/tmp/chelsa".
         Warning: this can represent a large amount of data.
+
+    Returns
+    -------
+    No output from the function. New file with dataset is stored in the output_dir.
     """
 
     # Create directories
-    tmp_directory = "./results/tmp/chelsa2"
-    output_directory = "./results/chelsa2"
-    Path(tmp_directory).mkdir(parents=True, exist_ok=True)
-    Path(output_directory).mkdir(parents=True, exist_ok=True)
+    Path(tmp_dir).mkdir(parents=True, exist_ok=True)
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
 
     # Get AOIs information
     aoi_name, aoi_bound = get_aoi_informations(aoi)
 
     # Get years to retrieve
-    periods = [baseline_year, evaluation_year]
-    years = set().union(*[list(range(period[0], period[1] + 1)) for period in periods])
+    #    periods = [baseline_year, evaluation_year]
+    #    years = set().union(*[list(range(period[0], period[1] + 1)) for period in periods])
+    years = list(range(period[0], period[1] + 1))
 
     # Specific case for CHELSA "pr" data
     if "pr" in variable and any(year in [2013, 2016] for year in years):
@@ -206,15 +209,16 @@ def get_chelsa2(
         years.remove(2013)  # issue with the tif
         years.remove(2016)  # issue with the tif
 
+    print("Downloading CHELSA data...")
     # Actual data retrieval
-    pool = Pool(nb_thread)
+    pool = Pool(nb_threads)
     paths = []
     for var in variable:
         paths.append(
             pool.starmap_async(
                 _get_chelsa2_year,
                 [
-                    (aoi_name, aoi_bound, year, var, frequency, tmp_directory)
+                    (aoi_name, aoi_bound, year, var, frequency, tmp_dir)
                     for year in years
                 ],
             ).get()
@@ -229,37 +233,23 @@ def get_chelsa2(
     # Merge files to get one file per aoi for all periods
     for aoi_n in aoi_name:
         # We first need to check if the files exist before processing data
-        output_filenames = [
-            f"{output_directory}/{aoi_n}_chelsa2_{aggregation.value}_{period[0]}-{period[1]}.nc"
-            for period in periods
-        ]
-        if not all(
-            Path(output_filename).is_file() for output_filename in output_filenames
-        ):
+        output_filename = f"{output_dir}/{aoi_n}_chelsa2_{aggregation.value}_{period[0]}-{period[1]}.nc"
+        if not Path(output_filename).is_file():
             # if not all files for aoi_n exist, we need to process the data
             print("Merging files for area " + aoi_n + "...")
             ds_aoi_period = xr.open_mfdataset(
                 paths2[aoi_n], decode_coords="all", parallel=True
             )
-            for period in periods:
-                output_filename = f"{output_directory}/{aoi_n}_chelsa2_{aggregation.value}_{period[0]}-{period[1]}.nc"
-
-                if not Path(output_filename).is_file():
-                    dmin, dmax = split_period(period)
-                    ds_aoi_period_clim = get_monthly_climatology(
-                        ds_aoi_period.sel(time=slice(dmin, dmax))
-                    )
-                    ds_aoi_period_clim.to_netcdf(output_filename)
-                else:
-                    print(
-                        f"""File for area {aoi_n} and period {period} already exists. Not downloading.
-                        Please make sure this is the expected behaviour"""
-                    )
+            dmin, dmax = split_period(period)
+            ds_aoi_period_clim = get_monthly_climatology(
+                ds_aoi_period.sel(time=slice(dmin, dmax))
+            )
+            ds_aoi_period_clim.to_netcdf(output_filename)
         else:
             print(
-                f"""Files for area {aoi_n} and periods {periods} already exist. Not downloading.
+                f"""File for area {aoi_n} and period {period} already exists. Not downloading.
                 Please make sure this is the expected behaviour"""
             )
 
     if not keep_tmp_dir:
-        shutil.rmtree(tmp_directory)
+        shutil.rmtree(tmp_dir)

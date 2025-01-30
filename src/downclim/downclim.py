@@ -23,31 +23,38 @@ class DownClimContext(BaseModel):
     This includes all the parameters needed to run the downscaling process.
     """
 
-    aoi: str | tuple[float, float, float, float, str] | gpd.GeoDataFrame | list[Any] = (
-        Field(
-            example=["Vanuatu"],
-            description="Areas of interest to downscale data. Mandatory field. Can be a string (name of the AOI), a tuple of 5 floats (minx, miny, maxx, maxy, name), a GeoDataFrame or a list of any of these.",
-        )
+    aoi: list[gpd.GeoDataFrame] = Field(
+        example=["Vanuatu"],
+        description="""Areas of interest to downscale data. Mandatory field.
+            Can be a string (name of the AOI),
+            a tuple of 5 floats (minx, miny, maxx, maxy, name),
+            a GeoDataFrame
+            or a list of any of these.""",
     )
-    variable: str | list[str] = Field(
+    variable: list[str] = Field(
         default=["tas", "pr"],
         example=["pr", "tas", "tasmin", "tasmax"],
         description="Variables to downscale.",
     )
-    time_frequency: str = Field(
+    time_frequency: Frequency = Field(
         default="mon", example="mon", description="Time frequency of the data."
     )
-    downscaling_aggregation: str = Field(
+    downscaling_aggregation: Aggregation = Field(
         default="monthly_mean",
         example="monthly_mean",
         description="Aggregation method to build the climatology.",
     )
-    baseline_product: str = Field(
+    baseline_product: DataProduct = Field(
         default="chelsa2",
         example="chelsa2",
         description="Baseline product to use for downscaling.",
     )
-    downscaling_method: str = Field(
+    evaluation_product: str | Iterable[str] | None = Field(
+        default=None,
+        example="chelsa2",
+        description="Products to use for the evaluation period.",
+    )
+    downscaling_method: DownscaleMethod = Field(
         default="bias_correction",
         example="bias_correction",
         description="Downscaling method to use.",
@@ -62,12 +69,12 @@ class DownClimContext(BaseModel):
         example=True,
         description="Whether to use CMIP6 data for scenarios to downscale.",
     )
-    cordex_context: CORDEXContext | dict[str, Any] | None = Field(
+    cordex_context: CORDEXContext | None = Field(
         default=None,
         example=CORDEXContext(domain="AUS-22", experiment="rcp85"),
         description="CORDEXContext object to use for defining the CORDEX data required.",
     )
-    cmip6_context: CMIP6Context | dict[str, Any] | None = Field(
+    cmip6_context: CMIP6Context | None = Field(
         default=None,
         example=CMIP6Context(),
         description="CMIP6Context object to use for defining the CMIP6 data required.",
@@ -86,11 +93,6 @@ class DownClimContext(BaseModel):
         default=(2071, 2100),
         example=(2071, 2100),
         description="Interval of years to use for the projection period.",
-    )
-    evaluation_product: str | Iterable[str] | None = Field(
-        default=None,
-        example="chelsa2",
-        description="Products to use for the evaluation period.",
     )
     nb_threads: int = Field(
         default=1,
@@ -121,12 +123,15 @@ class DownClimContext(BaseModel):
         default=False,
         description="Whether to keep the temporary directory after the process.",
     )
-    esgf_credentials: dict[str, str] | str | None = Field(
+    esgf_credentials: dict[str, str] | None = Field(
         default=None,
-        example={"username": "my_user", "password": "my_password"},
+        example={
+            "openid": "https://esgf-node.ipsl.upmc.fr/esgf-idp/openid/my_user",
+            "password": "my_password",
+        },
         description="""ESGF credentials to use for downloading the data.
-            Can be either a dictionary with 'username' and 'password' keys,
-            or a path to a yaml file containing these credentials.""",
+            Can be either a dictionary with 'openid' and 'password' keys,
+            or a path to a yaml file containing these 2 fields.""",
     )
 
     class Config:
@@ -144,7 +149,7 @@ class DownClimContext(BaseModel):
     def get_data_product(cls, v: str) -> DataProduct:
         match v:
             case "chelsa" | "chelsa2":
-                return DataProduct.CHELSA2
+                return DataProduct.CHELSA
             case "gshtd":
                 return DataProduct.GSHTD
             case "chirps":
@@ -167,19 +172,6 @@ class DownClimContext(BaseModel):
         if isinstance(v, str):
             return cls.to_list(v)
         return [str(var) for var in v]
-
-    @field_validator("projection_year", mode="after")
-    @classmethod
-    def check_projection_years(cls, v: tuple[int, int]) -> tuple[int, int]:
-        if v[0] <= 2015:
-            msg = """Beginning of projection period must start in 2015 or after.
-            This corresponds to the first year of the CMIP6 scenarios."""
-            raise ValueError(msg)
-        if v[1] > 2100:
-            msg = """End of projection period must end in 2100 or earlier.
-            This corresponds to the last year of the CMIP6 / CORDEX scenarios."""
-            raise ValueError(msg)
-        return v
 
     @field_validator("time_frequency", mode="after")
     @classmethod
@@ -207,6 +199,22 @@ class DownClimContext(BaseModel):
     def validate_baseline_product(cls, v: str) -> DataProduct:
         return cls.get_data_product(v.lower())
 
+    @field_validator("evaluation_product", mode="after")
+    @classmethod
+    def validate_evaluation_product(
+        cls, v: str | Iterable[str] | None, info: ValidationInfo
+    ) -> list[DataProduct]:
+        if v is None:
+            msg = "No evaluation products provided. Defaulting to the same product as baseline product."
+            warnings.warn(msg, stacklevel=1)
+            return [info.data["baseline_product"]]
+        if isinstance(v, str):
+            return [cls.get_data_product(v.lower())]
+        if isinstance(v, Iterable):
+            return [cls.get_data_product(p.lower()) for p in v]
+        msg = "Evaluation products must be a string or a list of strings that match the DataProducts available."
+        raise ValueError(msg)
+
     @field_validator("downscaling_method", mode="after")
     @classmethod
     def validate_downscaling_method(cls, v: str) -> DownscaleMethod:
@@ -221,63 +229,20 @@ class DownClimContext(BaseModel):
                 msg = "Only 'bias_correction', 'quantile_mapping' or 'dynamical' methods are available so far."
                 raise ValueError(msg)
 
-    @field_validator("output_dir", "tmp_dir", mode="after")
+    @field_validator("use_cordex", mode="after")
     @classmethod
-    def validate_dir(cls, v: str) -> str:
-        if not Path(v).exists():
-            Path(v).mkdir(parents=True)
-            msg = f"Directory {v} did not exist and was created."
-            warnings.warn(msg, stacklevel=1)
-        return v
-
-    @field_validator("esgf_credentials", mode="before")
-    @classmethod
-    def validate_esgf_credentials(
-        cls, v: dict[str, str] | str | None, info: ValidationInfo
-    ) -> dict[str, str] | None:
-        if v is None and info.data["use_cordex"]:
-            msg = "'use_cordex' is True but no ESGF credentials provided. Please provide them to access the data."
-            raise ValueError(msg)
-        if isinstance(v, str):
-            with Path(v).open(encoding="utf-8") as f:
-                v = yaml.safe_load(f)
-            if not all(key in v for key in ("username", "password")):
-                msg = """ESGF credentials must have 'username' and 'password' keys.
-                    Please check your yaml file."""
-                raise ValueError(msg)
-        if isinstance(v, dict) and not all(
-            key in v for key in ("username", "password")
-        ):
-            msg = "ESGF credentials must have 'username' and 'password' keys."
+    def check_cordex_coherency(cls, v: bool, info: ValidationInfo) -> bool:
+        if v and info.data["cordex_context"] is None:
+            msg = "cordex_context must be provided if use_cordex is True."
             raise ValueError(msg)
         return v
 
-    @field_validator("evaluation_product", mode="after")
+    @field_validator("use_cmip6", mode="after")
     @classmethod
-    def validate_evaluation_product(
-        cls, v: str | Iterable[str] | None, info: ValidationInfo
-    ) -> DataProduct | list[DataProduct]:
-        if v is None:
-            msg = "No evaluation products provided. Defaulting to the same product as baseline product."
-            warnings.warn(msg, stacklevel=1)
-            return [info.data["baseline_product"]]
-        if isinstance(v, str):
-            return [cls.get_data_product(v.lower())]
-        if isinstance(v, Iterable):
-            return [cls.get_data_product(p.lower()) for p in v]
-        msg = "Evaluation products must be a string or a list of strings match the DataProducts available."
-        raise ValueError(msg)
-
-    @field_validator("output_dir", "tmp_dir", mode="after")
-    @classmethod
-    def validate_dir_aoi(cls, v: str, info: ValidationInfo) -> str:
-        for aoi in info.data["aoi"]:
-            aoi_name = aoi["NAME_0"].to_numpy()[0]
-            aoi_path = Path(v).joinpath(aoi_name)
-            if aoi_path.exists():
-                msg = f"""Directory {aoi_path} already exists.
-                Please act carefully as you may overwrite existing files."""
-                warnings.warn(msg, stacklevel=1)
+    def check_cmip6_coherency(cls, v: bool, info: ValidationInfo) -> bool:
+        if v and info.data["cmip6_context"] is None:
+            msg = "cmip6_context must be provided if use_cmip6 is True."
+            raise ValueError(msg)
         return v
 
     @field_validator("cordex_context", mode="after")
@@ -287,7 +252,8 @@ class DownClimContext(BaseModel):
     ) -> CORDEXContext | None:
         if info.data["use_cordex"]:
             if v is None:
-                msg = "Cordex context must be provided if use_cordex is True."
+                msg = """'use_cordex' is set to True, however no cordex_context is provided.
+                Please correct to use a coherent context."""
                 raise ValueError(msg)
             if isinstance(v, dict):
                 v = CORDEXContext.model_validate(v)
@@ -300,20 +266,94 @@ class DownClimContext(BaseModel):
     ) -> CMIP6Context | None:
         if info.data["use_cmip6"]:
             if v is None:
-                msg = "'use_cmip6' is set to True, however no CMIP6Context is provided. Using default CMIP6 context."
-                warnings.warn(msg, stacklevel=1)
-                v = CMIP6Context()
-            elif isinstance(v, dict):
+                msg = """'use_cmip6' is set to True, however no cmip6_context is provided.
+                Please correct to use a coherent context."""
+                raise ValueError(msg)
+            if isinstance(v, dict):
                 v = CMIP6Context.model_validate(v)
         return v
 
-    @field_validator("use_cmip6", mode="after")
+    @field_validator("baseline_year", mode="after")
     @classmethod
-    def check_cmip6_coherency(cls, v: bool, info: ValidationInfo) -> bool:
-        if v and info.data["cmip6_context"] is None:
-            msg = "CMIP6 context must be provided if use_cmip6 is True."
+    def check_baseline_years(
+        cls, v: tuple[int, int], info: ValidationInfo
+    ) -> tuple[int, int]:
+        period = info.data["baseline_product"].period
+        if v[0] < period[0] or v[1] > period[1]:
+            msg = f"""Baseline period must be within the period of the baseline product.
+            The period of the baseline product is {period}."""
             raise ValueError(msg)
         return v
+
+    @field_validator("evaluation_year", mode="after")
+    @classmethod
+    def check_evaluation_years(
+        cls, v: tuple[int, int], info: ValidationInfo
+    ) -> tuple[int, int]:
+        for evaluation_product in info.data["evaluation_product"]:
+            period = evaluation_product.period
+            if v[0] < period[0] or v[1] > period[1]:
+                msg = f"""Evaluation period must be within the period of the evaluation product.
+                The period available for {evaluation_product.product_name} product is {period}."""
+                raise ValueError(msg)
+        return v
+
+    @field_validator("projection_year", mode="after")
+    @classmethod
+    def check_projection_years(cls, v: tuple[int, int]) -> tuple[int, int]:
+        if v[0] <= 2015:
+            msg = """Beginning of projection period must start in 2015 or after.
+            This corresponds to the first year of the CMIP6 / CORDEX scenarios."""
+            raise ValueError(msg)
+        if v[1] > 2100:
+            msg = """End of projection period must end in 2100 or earlier.
+            This corresponds to the last year of the CMIP6 / CORDEX scenarios."""
+            raise ValueError(msg)
+        return v
+
+    @field_validator("output_dir", "tmp_dir", mode="after")
+    @classmethod
+    def validate_dir_aoi(cls, v: str, info: ValidationInfo) -> str:
+        if not Path(v).exists():
+            Path(v).mkdir(parents=True)
+            msg = f"Directory {v} did not exist and was created."
+            warnings.warn(msg, stacklevel=1)
+        for aoi in info.data["aoi"]:
+            aoi_name = aoi["NAME_0"].to_numpy()[0]
+            aoi_path = Path(v).joinpath(aoi_name)
+            if aoi_path.exists():
+                msg = f"""Directory {aoi_path} already exists.
+                Please act carefully as you may overwrite existing files."""
+                warnings.warn(msg, stacklevel=1)
+        return v
+
+    @field_validator("esgf_credentials", mode="before")
+    @classmethod
+    def validate_esgf_credentials(
+        cls, v: dict[str, str] | str | None, info: ValidationInfo
+    ) -> dict[str, str] | None:
+        mandatory_keys = ("openid", "password")
+        if v is None:
+            if info.data["use_cordex"]:
+                msg = "'use_cordex' is True but no ESGF credentials provided. Please provide them to access the data."
+                raise ValueError(msg)
+            return None
+        if isinstance(v, str):
+            with Path(v).open(encoding="utf-8") as f:
+                v = yaml.safe_load(f)
+            if not all(key in v for key in mandatory_keys):
+                msg = f"""ESGF credentials must have {mandatory_keys} keys.
+                    Please check your yaml file."""
+                raise ValueError(msg)
+            return v
+        if isinstance(v, dict):
+            if not all(key in v for key in mandatory_keys):
+                msg = f"""ESGF credentials must have {mandatory_keys} keys.
+                    Please check your dictionary input."""
+                raise ValueError(msg)
+            return v
+        msg = "ESGF credentials must be a dictionary, a path to a yaml file or None."
+        raise ValueError(msg)
 
 
 def generate_DownClimContext_template_file(output_file: str) -> None:

@@ -9,8 +9,10 @@ from .dataset.utils import DataProduct
 from .downclim import DownClimContext
 
 
-def get_baseline(context: DownClimContext) -> None:
+def get_baseline_product(context: DownClimContext) -> None:
     """Get the baseline data for the DownClim context.
+
+    This means that it downloads the baseline product for the baseline period and builds a climatology.
 
     Args:
         context (DownClimContext): the DownClim context previously defined
@@ -19,7 +21,7 @@ def get_baseline(context: DownClimContext) -> None:
     Returns:
         None: the baseline data.
     """
-    if context.baseline_product is DataProduct.CHELSA2:
+    if context.baseline_product is DataProduct.CHELSA:
         get_chelsa2(
             aoi=context.aoi,
             variable=context.variable,
@@ -46,6 +48,51 @@ def get_baseline(context: DownClimContext) -> None:
         )
     else:
         msg = f"Unknown or not implemented data product '{context.baseline_product}'."
+        raise ValueError(msg)
+
+
+def get_evaluation_product(context: DownClimContext) -> None:
+    """Get the evaluation data for the DownClim context.
+
+    This means that it downloads the evaluation product for the evaluation period and builds a climatology.
+
+    Args:
+        context (DownClimContext): the DownClim context previously defined
+        containing all the necessary information.
+
+    Returns:
+        None: the evaluation data.
+    """
+    if context.evaluation_product is DataProduct.CHELSA:
+        get_chelsa2(
+            aoi=context.aoi,
+            variable=context.variable,
+            year=context.baseline_year,
+            frequency=context.time_frequency,
+            aggregation=context.downscaling_aggregation,
+            nb_threads=context.nb_threads,
+            output_dir=context.output_dir,
+            keep_tmp_dir=context.keep_tmp_dir,
+        )
+    elif context.evaluation_product is DataProduct.CHIRPS:
+        get_chirps(
+            aoi=context.aoi,
+            baseline_year=context.baseline_year,
+            evaluation_year=context.evaluation_year,
+            time_frequency=context.time_frequency,
+            aggregation=context.downscaling_aggregation,
+        )
+    elif context.evaluation_product is DataProduct.GSHTD:
+        get_gshtd(
+            aoi=context.aoi,
+            variable=context.variable,
+            baseline_year=context.baseline_year,
+            evaluation_year=context.evaluation_year,
+            time_frequency=context.time_frequency,
+            aggregation=context.downscaling_aggregation,
+        )
+    else:
+        msg = f"Unknown or not implemented data product '{context.evaluation_product}'."
         raise ValueError(msg)
 
 

@@ -68,10 +68,10 @@ def get_gshtd_single(
 def get_gshtd(
     aoi: Iterable[gpd.GeoDataFrame | pd.DataFrame],
     variable: Iterable[str] = ("tas", "tasmin", "tasmax"),
-    baseline_year: tuple[int, int] = (1980, 2005),
-    evaluation_year: tuple[int, int] = (2006, 2019),
+    period: tuple[int, int] = (1980, 2005),
     time_frequency: Frequency = Frequency.MONTHLY,
     aggregation: Aggregation = Aggregation.MONTHLY_MEAN,
+    output_dir: str = "./results/gshtd",
 ) -> None:
     """
     Get GSHTD data (https://gee-community-catalog.org/projects/gshtd/)
@@ -85,16 +85,10 @@ def get_gshtd(
         as a pandas.DataFrame with bounds [minx, miny, maxx, maxy].
     variable: Iterable[str]
         Iterable of variables to retrieve. Default is ["tas", "tasmin", "tasmax"].
-    baseline_year: tuple[(int, int)]
+    period: tuple[(int, int)]
         Tuple of time frame to retrieve, and build the climatologies on.
-        Should correspond to the historical period.
         Must be provided as a list of pairs of integers defining the start and end years of the period.
         e.g.: (1980, 2005).
-    evaluation_year: tuple[(int, int)]
-        Tuple of time frame to retrieve, and build the climatologies on.
-        Should correspond to the evaluation period.
-        Must be provided as a list of pairs of integers defining the start and end years of the period.
-        e.g.: (2006, 2019).
     time_frequency: Frequency, optional
         Time frequency of CHIRPS data (currently only Frequency.MONTHLY available).
         Defaults to Frequency.MONTHLY.
@@ -102,32 +96,37 @@ def get_gshtd(
         Method used to aggregate the data and build the climatology
         (currently only Aggregation.MONTHLY_MEAN available).
         Defaults to Aggregation.MONTHLY_MEAN.
+    output_dir: str, optional
+        Output directory where the GSHTD climatology will be stored.
+        Defaults to "./results/gshtd".
+
+    Returns
+    -------
+    No output from the function. New file with dataset is stored in the output_dir.
     """
 
-    output_directory = "./results/gshtd"
-    Path(output_directory).mkdir(parents=True, exist_ok=True)
-    print("Downloading GSHTD data...")
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
 
     aoi_name, aoi_bound = get_aoi_informations(aoi)
 
     connect_to_ee()
 
+    print("Downloading GSHTD data...")
     for aoi_n, aoi_b in zip(aoi_name, aoi_bound, strict=False):
-        for period in [baseline_year, evaluation_year]:
-            # First check if the data is already downloaded
-            output_file = f"{output_directory}/{aoi_n}_gshtd_{aggregation.value}_{period[0]}-{period[1]}.nc"
-            if Path(output_file).is_file():
-                print(
-                    f"""File {output_file} already exists, skipping...
-                    If this is not the expected behaviour, please remove the file and run the function again."""
-                )
-                continue
-            ds = xr.merge(
-                [
-                    get_gshtd_single(
-                        aoi_b, aoi_n, var, period, time_frequency, aggregation
-                    )
-                    for var in variable
-                ]
+        # First check if the data is already downloaded
+        output_file = (
+            f"{output_dir}/{aoi_n}_gshtd_{aggregation.value}_{period[0]}-{period[1]}.nc"
+        )
+        if Path(output_file).is_file():
+            print(
+                f"""File {output_file} already exists, skipping...
+                If this is not the expected behaviour, please remove the file and run the function again."""
             )
-            ds.to_netcdf(output_file)
+            continue
+        ds = xr.merge(
+            [
+                get_gshtd_single(aoi_b, aoi_n, var, period, time_frequency, aggregation)
+                for var in variable
+            ]
+        )
+        ds.to_netcdf(output_file)

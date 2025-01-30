@@ -80,10 +80,10 @@ def get_chirps_single_climatology(
 
 def get_chirps(
     aoi: list[gpd.GeoDataFrame],
-    baseline_year: tuple[int, int] = (1980, 2005),
-    evaluation_year: tuple[int, int] = (2006, 2019),
+    period: tuple[int, int] = (1980, 2005),
     time_frequency: Frequency = Frequency.MONTHLY,
     aggregation: Aggregation = Aggregation.MONTHLY_MEAN,
+    output_dir: str = "./results/chirps",
 ) -> None:
     """Retrieve CHIRPS precipitation data for a list of areas of interest and periods. This returns one monthly climatological
     xarray.Dataset object / netcdf file for each region and period.
@@ -95,16 +95,10 @@ def get_chirps(
     aoi: Iterable[geopandas.GeoDataFrame]
         List of areas of interest, defined as geopandas.GeoDataFrame objects (from shapefiles) or
         as a pandas.DataFrame with bounds [minx, miny, maxx, maxy].
-    baseline_year: tuple[(int, int)]
+    period: tuple[(int, int)]
         Tuple of time frame to retrieve, and build the climatologies on.
-        Should correspond to the historical period.
         Must be provided as a list of pairs of integers defining the start and end years of the period.
         e.g.: (1980, 2005).
-    evaluation_year: tuple[(int, int)]
-        Tuple of time frame to retrieve, and build the climatologies on.
-        Should correspond to the evaluation period.
-        Must be provided as a list of pairs of integers defining the start and end years of the period.
-        e.g.: (2006, 2019).
     time_frequency: Frequency, optional
         Time frequency of CHIRPS data (currently only Frequency.MONTHLY available).
         Defaults to Frequency.MONTHLY, i.e. original CHIRPS data is averaged monthly
@@ -112,30 +106,34 @@ def get_chirps(
         Method used to aggregate the data and build the climatology
         (currently only Aggregation.MONTHLY_MEAN available).
         Defaults to Aggregation.MONTHLY_MEAN.
+    output_dir: str, optional
+        Output directory where the CHIRPS climatology will be stored.
+        Defaults to "./results/chirps".
 
     Returns
     -------
-    No output from the function. Dataset is stored in the "./results/chirps/" directory.
+    No output from the function. New file with dataset is stored in the output_dir.
     """
-    output_directory = "./results/chirps"
-    Path(output_directory).mkdir(parents=True, exist_ok=True)
-    print("Downloading CHIRPS data...")
 
+    # Create directory
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
+
+    # Get AOIs information
     aois_names, aois_bounds = get_aoi_informations(aoi)
 
     connect_to_ee()
 
+    print("Downloading CHIRPS data...")
     for aoi_n, aoi_b in zip(aois_names, aois_bounds, strict=False):
-        for period in [baseline_year, evaluation_year]:
-            # First check if the data is already downloaded
-            output_file = f"{output_directory}/{aoi_n}_chirps_{aggregation.value}_{period[0]}-{period[1]}.nc"
-            if Path(output_file).is_file():
-                print(
-                    f"""File {output_file} already exists, skipping...
-                    If this is not the expected behaviour, please remove the file and run the function again."""
-                )
-                continue
-            ds = get_chirps_single_climatology(
-                aoi_b, aoi_n, period, time_frequency, aggregation
+        # First check if the data is already downloaded
+        output_file = f"{output_dir}/{aoi_n}_chirps_{aggregation.value}_{period[0]}-{period[1]}.nc"
+        if Path(output_file).is_file():
+            print(
+                f"""File {output_file} already exists, skipping...
+                If this is not the expected behaviour, please remove the file and run the function again."""
             )
-            ds.to_netcdf(output_file)
+            continue
+        ds = get_chirps_single_climatology(
+            aoi_b, aoi_n, period, time_frequency, aggregation
+        )
+        ds.to_netcdf(output_file)
