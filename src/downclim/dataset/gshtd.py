@@ -14,10 +14,10 @@ from .utils import (
     Aggregation,
     DataProduct,
     Frequency,
+    VariableAttributes,
     get_monthly_climatology,
     get_monthly_mean,
     split_period,
-    variables_attributes,
 )
 
 
@@ -60,7 +60,7 @@ def get_gshtd_single(
         ds.b1 * DataProduct.GSHTD.scale_factor[variable]
         + DataProduct.GSHTD.add_offset[variable]
     )  # K to °C
-    ds.b1.attrs = variables_attributes[variable]
+    ds.b1.attrs = VariableAttributes[variable]
     return ds.rename({"b1": variable})
 
 

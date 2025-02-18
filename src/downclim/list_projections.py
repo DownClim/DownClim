@@ -3,11 +3,9 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable
 
-import numpy as np
 import pandas as pd
 import pyesgf
 
-from .dataset.cmip6 import CMIP6Context
 from .dataset.connectors import connect_to_esgf
 from .dataset.cordex import CORDEXContext
 from .dataset.utils import DataProduct
@@ -128,122 +126,6 @@ def inspect_cordex(
     ]
     df_cordex.project = df_cordex.project.str.upper()
     return df_cordex.drop_duplicates()
-
-
-# CMIP6
-# -----
-
-
-def list_available_cmip6_simulations(
-    context: dict[str, str | Iterable[str]] | CMIP6Context,
-) -> pd.DataFrame:
-    """List all available CMIP6 simulations available on Google Cloud Storage for a given set of context.
-
-    Parameters
-    ----------
-        context (dict[str, str | Iterable[str]] | CMIP6Context):
-        Object containing information about the query on the CMIP6 dataset. Entries of the dictionary can be
-        either `str` or `Iterables` (e.g. `list`) if multiple values are provides.
-
-        These following keys are available. None are mandatory):
-            - activity_id: str, e.g "ScenarioMIP", "CMIP"
-            - institution_id: str, e.g "IPSL", "NCAR"
-            - source_id: str, e.g "IPSL-CM6A-LR", "CMCC-CM2-HR4"
-            - experiment_id: str, e.g "ssp126", "historical"
-            - member_id: str, e.g "r1i1p1f1"
-            - table_id: str, e.g "Amon", "day"
-            - variable_id: str, e.g "tas", "pr"
-            - grid_label: str, e.g "gn", "gr"
-            - zstore: str, e.g "gs://cmip6/CMIP6/ScenarioMIP/IPSL/IPSL-CM6A-LR/ssp126/r1i1p1f1/Amon/tas/gr/v20190903"
-            - dcpp_init_year: str, e.g "1850", "2015"
-            - version: str, e.g "20190903"
-
-
-    Returns:
-    -------
-        pd.DataFrame: DataFrame containing information about the available datasets matching
-    """
-
-    if isinstance(context, CMIP6Context):
-        context = context.model_dump()
-    # gcfs connection
-    # gcfs_connector = connect_to_gcfs()
-    # list CMIP6 datasets matching context
-    cmip6_simulations = inspect_cmip6(context)
-    cmip6_simulations = cmip6_simulations.assign(domain="GLOBAL")
-    cmip6_simulations = cmip6_simulations.assign(product="output")
-    cmip6_simulations["time_frequency"] = np.where(
-        cmip6_simulations["table_id"] == "Amon", "mon", None
-    )
-
-    # filter simulations that don't have both historical & projection
-    cmip6_simulations = cmip6_simulations.groupby(["source_id", "member_id"]).filter(
-        lambda x: set(context["experiment_id"]).issubset(set(x["experiment_id"]))
-    )
-
-    return (
-        cmip6_simulations.rename(
-            columns={
-                "activity_id": "project",
-                "institution_id": "institute",
-                "source_id": "model",
-                "experiment_id": "experiment",
-                "member_id": "ensemble",
-                "variable_id": "variable",
-                "zstore": "datanode",
-                "table_id": "table",
-            }
-        )
-        .reset_index()
-        .drop("index", axis=1)
-    )
-
-
-def inspect_cmip6(
-    context: dict[str, str | Iterable[str]],
-    cmip6_catalog_url: str = DataProduct.CMIP6.url,
-) -> pd.DataFrame:
-    """
-    Inspects Google Cloud File System to get information about the available CMIP6 datasets provided the context.
-
-    Parameters
-    ----------
-    context: dict([str, str | Iterable[str]])
-        Dictionary containing information about the query on the CMIP6 dataset. Entries of the dictionary can be
-        either `str` or `Iterables` (e.g. `list`) if multiple values are provides.
-        These following keys are available (none are mandatory):
-            - activity_id: str, e.g "ScenarioMIP", "CMIP"
-            - institution_id: str, e.g "IPSL", "NCAR"
-            - source_id: str, e.g "IPSL-CM6A-LR", "CMCC-CM2-HR4"
-            - experiment_id: str, e.g "ssp126", "historical"
-            - member_id: str, e.g "r1i1p1f1"
-            - table_id: str, e.g "Amon", "day"
-            - variable_id: str, e.g "tas", "pr"
-            - grid_label: str, e.g "gn", "gr"
-            - zstore: str, e.g "gs://cmip6/CMIP6/ScenarioMIP/IPSL/IPSL-CM6A-LR/ssp126/r1i1p1f1/Amon/tas/gr/v20190903"
-            - dcpp_init_year: str, e.g "1850", "2015"
-            - version: str, e.g "20190903"
-    cmip6_catalog_url: str (default: DataProduct.CMIP6.url)
-        URL to the CMIP6 catalog on the Google Cloud File System.
-
-    Returns
-    -------
-    pd.DataFrame: DataFrame containing information about the available datasets matching the query
-    """
-    cmip6_catalog = pd.read_csv(cmip6_catalog_url)
-
-    search_string_parts = []
-    for k, v in context.items():
-        if v is not None:
-            if isinstance(v, str):
-                search_string_parts.append(f"{k} == '{v}'")
-            else:
-                search_string_parts.append(
-                    "(" + " | ".join([f"{k} == '{w}'" for w in v]) + ")"
-                )
-    search_string = " & ".join(search_string_parts)
-
-    return cmip6_catalog.query(search_string)
 
 
 # ---------------

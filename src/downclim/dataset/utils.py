@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime as dt
 from enum import Enum
 from typing import Any
@@ -71,7 +71,7 @@ class DataProductProperties:
     url: str
 
 
-class DataProduct(Enum):
+class DataProduct(DataProductProperties, Enum):
     """Enum Class to define the data products handled.
 
     Raises:
@@ -86,7 +86,7 @@ class DataProduct(Enum):
         (1980, 2019),
         {"pr": 0.1, "tas": 0.1, "tasmin": 0.1, "tasmax": 0.1},
         {"pr": 0, "tas": -273.15, "tasmin": -273.15, "tasmax": -273.15},
-        "https://os.zhdk.cloud.switch.ch/envicloud/chelsav2/GLOBAL",
+        "https://os.zhdk.cloud.switch.ch/chelsav2/GLOBAL",
     )
     CMIP6 = (
         "cmip6",
@@ -111,63 +111,53 @@ class DataProduct(Enum):
     )
     CHIRPS = "chirps", (1980, 2024), {"pr": 1}, {"pr": 0}, "UCSB-CHG/CHIRPS/DAILY"
 
-    @classmethod
-    def _missing_(cls, value: Any) -> DataProduct:
-        if isinstance(value, str):
-            value = value.lower()
-            for member in cls:
-                if value in member.to_numpy():
-                    return member
-        msg = f"Unknown or not implemented retrieval of data product '{value}'."
-        raise ValueError(msg)
+
+@dataclass
+class VariableAttributesDescription:
+    """Data class to define the attributes of the variables in the dataset."""
+
+    standard_name: str
+    long_name: str
+    units: str
+    explanation: str
 
 
-variables_attributes = {
-    "pr": {
-        "standard_name": "precipitation",
-        "long_name": "Monthly precipitation",
-        "units": "mm month-1",
-        "explanation": "Precipitation in the earth's atmosphere, monthly means precipitation of water in all phases.",
-    },
-    "tas": {
-        "standard_name": "temperature at surface",
-        "long_name": "Monthly mean daily air temperature",
-        "units": "°C",
-        "explanation": "Monthly mean air temperatures at 2 meters.",
-    },
-    "tasmin": {
-        "standard_name": "minimum temperature at surface",
-        "long_name": "Monthly minimum daily air temperature",
-        "units": "°C",
-        "explanation": "Monthly minimum air temperatures at 2 meters.",
-    },
-    "tasmax": {
-        "standard_name": "maximum temperature at surface",
-        "long_name": "Monthly maximum daily air temperature",
-        "units": "°C",
-        "explanation": "Monthly maximum air temperatures at 2 meters.",
-    },
-    "pet": {
-        "standard_name": "potential evapotranspiration",
-        "long_name": "Monthly potential evapotranspiration",
-        "units": "mm month-1",
-        "explanation": "Potential evapotranspiration for each month; calculated with the Penman-Monteith equation.",
-    },
-}
+class VariableAttributes(VariableAttributesDescription, Enum):
+    """Enum Class to define the attributes of the variables in the dataset.
 
-scale_factors = {
-    "chelsa2": {"pr": 0.1, "tas": 0.1, "tasmin": 0.1, "tasmax": 0.1},
-    "cmip6": {"pr": 60 * 60 * 24, "tas": 1, "tasmin": 1, "tasmax": 1},
-    "cordex": {"pr": 60 * 60 * 24, "tas": 1, "tasmin": 1, "tasmax": 1},
-    "gshtd": {"tas": 0.02, "tasmin": 0.02, "tasmax": 0.02},
-}
+    Implementation is done var the variables handled in Downclim so far.
+    """
 
-add_offsets = {
-    "chelsa2": {"pr": 0, "tas": -273.15, "tasmin": -273.15, "tasmax": -273.15},
-    "cmip6": {"pr": 0, "tas": -273.15, "tasmin": -273.15, "tasmax": -273.15},
-    "cordex": {"pr": 0, "tas": -273.15, "tasmin": -273.15, "tasmax": -273.15},
-    "gshtd": {"tas": -273.15, "tasmin": -273.15, "tasmax": -273.15},
-}
+    pr = (
+        "precipitation",
+        "Monthly precipitation",
+        "mm month-1",
+        "Precipitation in the earth's atmosphere, monthly means precipitation of water in all phases.",
+    )
+    tas = (
+        "temperature at surface",
+        "Monthly mean daily air temperature",
+        "°C",
+        "Monthly mean air temperatures at 2 meters.",
+    )
+    tasmin = (
+        "minimum temperature at surface",
+        "Monthly minimum daily air temperature",
+        "°C",
+        "Monthly minimum air temperatures at 2 meters.",
+    )
+    tasmax = (
+        "maximum temperature at surface",
+        "Monthly maximum daily air temperature",
+        "°C",
+        "Monthly maximum air temperatures at 2 meters.",
+    )
+    pet = (
+        "potential evapotranspiration",
+        "Monthly potential evapotranspiration",
+        "mm month-1",
+        "Potential evapotranspiration for each month; calculated with the Penman-Monteith equation.",
+    )
 
 
 def split_period(period: tuple[int, int]) -> tuple[str, str]:
@@ -191,7 +181,7 @@ def convert_cf_to_dt(t: np.datetime64) -> dt:
     return dt.strptime(str(t), "%Y-%m-%d %H:%M:%S")
 
 
-def prep_dataset(ds: xr.Dataset, dataset_type: str = "cordex") -> xr.Dataset:
+def prep_dataset(ds: xr.Dataset, dataset_type: DataProduct) -> xr.Dataset:
     """Prepare a dataset for downscaling.
 
     Some operations (scaling and offsets) are applied to the dataset depending on
@@ -200,8 +190,8 @@ def prep_dataset(ds: xr.Dataset, dataset_type: str = "cordex") -> xr.Dataset:
     Parameters
     ----------
     ds: xr.Dataset original dataset to prepare.
-    dataset_type: str, optional
-        Type of dataset to prepare. Default is "cordex" but can be "cmip6", "chelsa2" or "gshtd".
+    dataset_type: DataProduct
+        Type of dataset to prepare.
 
     Returns
     -------
@@ -213,9 +203,9 @@ def prep_dataset(ds: xr.Dataset, dataset_type: str = "cordex") -> xr.Dataset:
         ds["time"] = [*map(convert_cf_to_dt, ds.time.values)]
     for key in ds:
         ds[key] = (
-            ds[key] * scale_factors[dataset_type][key] + add_offsets[dataset_type][key]
+            ds[key] * dataset_type.scale_factor[key] + dataset_type.add_offset[key]
         )
-        ds[key].attrs = variables_attributes[key]
+        ds[key].attrs = asdict(VariableAttributes[key].value)
     return ds
 
 

@@ -1,23 +1,27 @@
+# %load_ext autoreload
+# %autoreload 2
 from __future__ import annotations
 
 from downclim.dataset.aoi import get_aoi, get_aoi_informations
 from downclim.dataset.chelsa2 import get_chelsa2
 from downclim.dataset.chirps import get_chirps
-from downclim.dataset.cmip6 import CMIP6Context, get_cmip6
+from downclim.dataset.cmip6 import (
+    CMIP6Context,
+    get_cmip6,
+    get_cmip6_from_list,
+    list_available_cmip6_simulations,
+)
 from downclim.dataset.cordex import CORDEXContext
 from downclim.dataset.gshtd import get_gshtd
 from downclim.downclim import DownClimContext
 from downclim.getters import get_baseline_product
-from downclim.list_projections import (
-    list_available_cmip6_simulations,
-    list_available_cordex_simulations,
-)
+from downclim.list_projections import list_available_cordex_simulations
 
 # Get AOI
 aoi1 = get_aoi("Vanuatu")
 aoi2 = get_aoi((30, 30, 40, 40, "box"))
 aoi = [aoi1, aoi2]
-aois_names, aois_bounds = get_aoi_informations(aoi)
+aoi_name, aoi_bound = get_aoi_informations(aoi)
 
 # Get CHELSA data
 get_chelsa2(
@@ -81,15 +85,24 @@ cordex_simulations = list_available_cordex_simulations(
 
 # List available CMIP6 simulations
 cmip6_context = CMIP6Context(
-    activity_id=["ScenarioMIP", "CMIP"],
-    institution_id=["NOAA-GFDL", "CMCC"],
-    experiment_id=["ssp126", "historical"],
-    member_id="r1i1p1f1",
-    table_id="Amon",
-    variable_id=["tas", "pr"],
+    project=["ScenarioMIP", "CMIP"],
+    institute=["NOAA-GFDL", "CMCC"],
+    experiment=["ssp126", "historical"],
+    ensemble="r1i1p1f1",
+    frequency="mon",
+    variable=["tas", "pr"],
     grid_label="gn",
 )
 cmip6_simulations = list_available_cmip6_simulations(cmip6_context)
+
+get_cmip6_from_list(
+    aoi=aoi,
+    cmip6_simulations=cmip6_simulations,
+    baseline_year=(1980, 1981),
+    evaluation_year=(2006, 2007),
+    projection_year=(2071, 2072),
+    output_dir="./results/cmip6",
+)
 
 # Get baseline data
 get_baseline_product(downclim_context)

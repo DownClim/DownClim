@@ -4,13 +4,13 @@ import geopandas
 import numpy as np
 import xarray as xr
 
-from .utils import variables_attributes
+from .utils import VariableAttributes
 
 
 def compute_tmf(proj, rsds, pet_pr_max=1, tmin=16, prmin=1000):
     ds = xr.merge([proj, rsds])
     ds["pet"] = 0.0023 * ds.rsds * (ds.tas + 17.8) * pow((ds.tasmax - ds.tasmin), 0.5)
-    ds.pet.attrs = variables_attributes["pet"]
+    ds.pet.attrs = VariableAttributes["pet"]
     ds_year = ds.mean("month")
     ds_year["pr"] = ds[["pr"]].sum("month").pr
     ds_year["pet"] = ds[["pet"]].sum("month").pet

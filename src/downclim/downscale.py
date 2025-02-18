@@ -206,6 +206,11 @@ def downscale(
         msg = "Method not implemented yet, only bias_correction is available."
         raise ValueError(msg)
 
+    reference_file = f"{period_reference_output}/{aoi_n}_{period_reference_product.product_name}_{aggregation.value}_{period[0]}-{period[1]}.nc"
+    reference = xr.open_dataset(reference_file[0])
+    # regridder = xe.Regridder(ds, reference, "bilinear")
+    # ds_r = regridder(ds, keep_attrs=True)
+
     # prep and write
     proj_ds.to_netcdf(
         f"{Path(proj_file).parent}/{area}_{project}_{domain}_{institute}_{model}_{experiment}_{ensemble}_{rcm}_{downscaling}_{baseline}_{aggregation}_{period_future}_{period_hist}_bc.nc"

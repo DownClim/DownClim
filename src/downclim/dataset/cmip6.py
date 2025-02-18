@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import warnings
 from collections.abc import Iterable
+from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 import geopandas as gpd
 import numpy as np
@@ -37,29 +39,80 @@ class CMIP6Context(BaseModel):
     - grid_label: str, e.g "gn", "gr"
     """
 
-    activity_id: str | list[str] | None = Field(
-        default=["ScenarioMIP", "CMIP"], description="Name of the CMIP6 activity"
+    project: list[str] | None = Field(
+        default=("ScenarioMIP", "CMIP"),
+        example=["ScenarioMIP", "CMIP"],
+        description="Name of the CMIP6 activity",
     )
-    institution_id: str | list[str] | None = Field(
-        default=["IPSL", "NCAR"], description="Institute name that produced the data"
+    institute: list[str] | None = Field(
+        default=None,
+        example=["IPSL", "NCAR"],
+        description="Institute name that produced the data.",
     )
-    source_id: str | list[str] | None = Field(
-        default=None, description="Global climate model name"
+    source: list[str] | None = Field(
+        default=None,
+        example=["IPSL-CM6A-LR", "CMCC-CM2-HR4"],
+        description="Global climate model name",
     )
-    experiment_id: str | list[str] | None = Field(
-        default=["ssp245", "historical"],
+    experiment: list[str] | None = Field(
+        default=("ssp245", "historical"),
+        example=["ssp245", "historical"],
         description="Name of the experiment type of the simulation",
     )
-    member_id: str | list[str] | None = Field(
+    ensemble: list[str] | None = Field(
         default="r1i1p1f1", description="Ensemble member"
     )
-    table_id: str | None = Field(default="Amon", description="CMIP6 table name")
-    variable_id: str | list[str] | None = Field(
-        default=["tas", "tasmin", "tasmax", "pr"], description="Variables name"
+    frequency: Frequency = Field(
+        default="Frequency.MONTHLY",
+        example="mon",
+        description="Time frequency of the data",
+    )
+    variable: list[str] | None = Field(
+        default=("tas", "pr"),
+        example=["tas", "tasmin", "tasmax", "pr"],
+        description="Variables name",
     )
     grid_label: str | None = Field(default=None, description="Grid label")
 
-    @field_validator("experiment_id", mode="before")
+    class Config:
+        """Pydantic configuration for the DownClimContext class."""
+
+        # arbitrary_types_allowed = True # Whether arbitrary types are allowed for field types.
+        extra = "forbid"  # Forbid extra data during model initialization.
+
+    @classmethod
+    def to_list(cls, v: Any) -> list[Any]:
+        if not isinstance(v, list):
+            return [v]
+        return v
+
+    @field_validator(
+        "experiment",
+        "institute",
+        "source",
+        "variable",
+        "project",
+        "ensemble",
+        mode="before",
+    )
+    @classmethod
+    def validate_list(cls, v: Any) -> list[Any]:
+        if isinstance(v, str):
+            return [v]
+        if isinstance(v, tuple | set):
+            if all(isinstance(e, str) for e in v):
+                return list(v)
+            msg = f"Value {v} is not valid. Please provide a string, a tuple, set or list of string."
+            raise ValueError(msg)
+        if isinstance(v, list):
+            if all(isinstance(e, str) for e in v):
+                return v
+            msg = f"Value {v} is not valid. Please provide a string, a tuple, set or list of string."
+            raise ValueError(msg)
+        msg = f"Value {v} is not valid. Please provide a string, a tuple or a list."
+        raise ValueError(msg)
+
+    @field_validator("experiment", mode="before")
     @classmethod
     def validate_experiment_id(cls, v: str | list[str] | None) -> list[str]:
         if not any(exp == "historical" for exp in v):
@@ -72,6 +125,7 @@ class CMIP6Context(BaseModel):
         return v
 
 
+@lru_cache
 def _get_cmip6_catalog(
     url: str,
 ) -> pd.DataFrame:
@@ -91,6 +145,223 @@ def _get_cmip6_catalog(
     return pd.read_csv(url)
 
 
+def list_available_cmip6_simulations(
+    context: dict[str, str | Iterable[str]] | CMIP6Context,
+) -> pd.DataFrame:
+    """List all available CMIP6 simulations available on Google Cloud Storage for a given set of context.
+
+    Parameters
+    ----------
+        context (dict[str, str | Iterable[str]] | CMIP6Context):
+        Object containing information about the query on the CMIP6 dataset. Entries of the dictionary can be
+        either `str` or `Iterables` (e.g. `list`) if multiple values are provides.
+
+        These following keys are available. None are mandatory):
+            - activity_id: str, e.g "ScenarioMIP", "CMIP"
+            - institution_id: str, e.g "IPSL", "NCAR"
+            - source_id: str, e.g "IPSL-CM6A-LR", "CMCC-CM2-HR4"
+            - experiment_id: str, e.g "ssp126", "historical"
+            - member_id: str, e.g "r1i1p1f1"
+            - table_id: str, e.g "Amon", "day"
+            - variable_id: str, e.g "tas", "pr"
+            - grid_label: str, e.g "gn", "gr"
+            - zstore: str, e.g "gs://cmip6/CMIP6/ScenarioMIP/IPSL/IPSL-CM6A-LR/ssp126/r1i1p1f1/Amon/tas/gr/v20190903"
+            - dcpp_init_year: str, e.g "1850", "2015"
+            - version: str, e.g "20190903"
+
+
+    Returns:
+    -------
+        pd.DataFrame: DataFrame containing information about the available datasets matching
+    """
+
+    if isinstance(context, CMIP6Context):
+        context = context.model_dump()
+    # gcfs connection
+    # gcfs_connector = connect_to_gcfs()
+    # list CMIP6 datasets matching context
+    cmip6_simulations = inspect_cmip6(context)
+    cmip6_simulations = cmip6_simulations.assign(domain="GLOBAL")
+    cmip6_simulations = cmip6_simulations.assign(product="output")
+
+    # filter simulations that don't have all variables requested
+    cmip6_simulations = cmip6_simulations.groupby(
+        ["source", "experiment", "ensemble"]
+    ).filter(lambda x: set(context["variable"]) == (set(x["variable"])))
+    # filter simulations that don't have both historical & projection
+    cmip6_simulations = cmip6_simulations.groupby(["source", "ensemble"]).filter(
+        lambda x: set(context["experiment"]).issubset(set(x["experiment"]))
+    )
+    if cmip6_simulations.empty:
+        msg = "No CMIP6 simulations found for the given context."
+        warnings.warn(msg, stacklevel=1)
+        return cmip6_simulations
+    return cmip6_simulations.reset_index().drop("index", axis=1)
+
+
+def inspect_cmip6(
+    context: dict[str, str | Iterable[str]],
+    cmip6_catalog_url: str = DataProduct.CMIP6.url,
+) -> pd.DataFrame:
+    """
+    Inspects Google Cloud File System to get information about the available CMIP6 datasets provided the context.
+
+    Parameters
+    ----------
+    context: dict([str, str | Iterable[str]])
+        Dictionary containing information about the query on the CMIP6 dataset. Entries of the dictionary can be
+        either `str` or `Iterables` (e.g. `list`) if multiple values are provides.
+        These following keys are available (none are mandatory):
+            - activity_id: str, e.g "ScenarioMIP", "CMIP"
+            - institution_id: str, e.g "IPSL", "NCAR"
+            - source_id: str, e.g "IPSL-CM6A-LR", "CMCC-CM2-HR4"
+            - experiment_id: str, e.g "ssp126", "historical"
+            - member_id: str, e.g "r1i1p1f1"
+            - table_id: str, e.g "Amon", "day"
+            - variable_id: str, e.g "tas", "pr"
+            - grid_label: str, e.g "gn", "gr"
+            - zstore: str, e.g "gs://cmip6/CMIP6/ScenarioMIP/IPSL/IPSL-CM6A-LR/ssp126/r1i1p1f1/Amon/tas/gr/v20190903"
+            - dcpp_init_year: str, e.g "1850", "2015"
+            - version: str, e.g "20190903"
+    cmip6_catalog_url: str (default: DataProduct.CMIP6.url)
+        URL to the CMIP6 catalog on the Google Cloud File System.
+
+    Returns
+    -------
+    pd.DataFrame: DataFrame containing information about the available datasets matching the query
+    """
+
+    # name mapping between context / CMIP6 catalog and output
+    cmip6_name_mapping = {
+        "project": "activity_id",
+        "institute": "institution_id",
+        "source": "source_id",
+        "experiment": "experiment_id",
+        "ensemble": "member_id",
+        "frequency": "table_id",
+        "variable": "variable_id",
+        "grid_label": "grid_label",
+    }
+    inverse_cmip6_name_mapping = {v: k for k, v in cmip6_name_mapping.items()}
+    inverse_cmip6_name_mapping["zstore"] = "datanode"
+    inverse_cmip6_name_mapping["table_id"] = "table"
+
+    if context["frequency"] == Frequency.MONTHLY:
+        context["frequency"] = "Amon"
+
+    cmip6_catalog = _get_cmip6_catalog(cmip6_catalog_url)
+
+    search_string_parts = []
+    for k, v in context.items():
+        if v is not None:
+            if isinstance(v, str):
+                search_string_parts.append(f"{cmip6_name_mapping[k]} == '{v}'")
+            else:
+                search_string_parts.append(
+                    "("
+                    + " | ".join([f"{cmip6_name_mapping[k]} == '{w}'" for w in v])
+                    + ")"
+                )
+    search_string = " & ".join(search_string_parts)
+
+    return cmip6_catalog.query(search_string).rename(columns=inverse_cmip6_name_mapping)
+
+
+def get_cmip6_from_list(
+    aoi: list[gpd.GeoDataFrame],
+    cmip6_simulations: pd.DataFrame,
+    baseline_year: tuple[int, int] = (1980, 2005),
+    evaluation_year: tuple[int, int] = (2006, 2019),
+    projection_year: tuple[int, int] = (2071, 2100),
+    aggregation: Aggregation = Aggregation.MONTHLY_MEAN,
+    output_dir: str = "./results/cmip6",
+    chunks: dict[str, int] | None = None,
+) -> None:
+    """
+    Get CMIP6 data for given regions, variables and periods. Uses google cloud storage to retrieve data.
+    It also regrids the data to the given baseline dataset.
+
+    You have one file gathering all requested files per:
+    - area of interest,
+    - period
+    - institute / model / experiment / ensemble.
+
+    Parameters
+    ----------
+    cmip6_simulations: pd.DataFrame
+        DataFrame containing the CMIP6 simulations to retrieve.
+    """
+
+    # Default values of chunks
+    if chunks is None:
+        chunks = {"time": 100, "lat": 400, "lon": 400}
+
+    # Create output directory
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
+
+    # Get AOIs information
+    aois_names, aois_bounds = get_aoi_informations(aoi)
+
+    gcfs = connect_to_gcfs()
+
+    # Retrieve data
+    all_ds = {}
+    cmip6_simulations_grouped = cmip6_simulations.groupby(
+        ["institute", "source", "ensemble", "experiment"]
+    )
+    for group_name, group in cmip6_simulations_grouped:
+        print(f"Getting CMIP6 data for {group_name}.")
+        ds_group = []
+        for _, row in group.iterrows():
+            mapper = gcfs.get_mapper(row.datanode)
+            ds_group.append(
+                xr.open_zarr(mapper, consolidated=True).assign_coords(
+                    {
+                        "source": row.source,
+                        "institute": row.institute,
+                        "experiment": row.experiment,
+                        "ensemble": row.ensemble,
+                    }
+                )
+            )
+        all_ds[group_name] = prep_dataset(
+            xr.merge(ds_group).chunk(chunks=chunks), DataProduct.CMIP6
+        )
+
+    # Define time periods
+    periods_years = [baseline_year, evaluation_year, projection_year]
+    periods_names = ["baseline", "evaluation", "projection"]
+
+    for period_year, period_name in zip(periods_years, periods_names, strict=False):
+        tmin, tmax = split_period(period_year)
+        for aoi_n, aoi_b in zip(aois_names, aois_bounds, strict=False):
+            print(f"""Extracting CMIP6 data for {period_name}, years {tmin} to {tmax},
+                  for the area of interest {aoi_n}.""")
+            # Extend the AOI to avoid edge effects
+            aoi_b["minx"] -= 2
+            aoi_b["miny"] -= 2
+            aoi_b["maxx"] += 2
+            aoi_b["maxy"] += 2
+            for (institute, source, ensemble, experiment), ds in all_ds.items():
+                ds_period = ds.sel(time=slice(tmin, tmax))
+                if ds_period.sizes["time"] == 0:
+                    continue
+                ds_aoi = ds_period.rio.write_crs("epsg:4326").rio.clip_box(
+                    *aoi_b.to_numpy()[0]
+                )
+                if aggregation != Aggregation.MONTHLY_MEAN:
+                    msg = "Currently only monthly-means aggregation available!"
+                    raise ValueError(msg)
+                ds_clim = get_monthly_climatology(ds_aoi)
+                output_file = f"{output_dir}/{aoi_n}_CMIP6_global_{institute}_{source}_{experiment}_{ensemble}_{aggregation.value}_{tmin}_{tmax}.nc"
+                ds_clim.to_netcdf(output_file)
+
+
+############################################################################################################
+# DEPRECATED
+############################################################################################################
+
+
 def get_cmip6(
     aoi: Iterable[gpd.GeoDataFrame],
     variable: Iterable[str] = ("pr", "tas", "tasmin", "tasmax"),
@@ -107,6 +378,7 @@ def get_cmip6(
     grid_label: str = "gn",
     baseline: str = "chelsa2",
     chunks: dict[str, int] | None = None,
+    output_dir: str = "./results/cmip6",
 ) -> None:
     """
     Get CMIP6 data for given regions, variables and periods. Uses google cloud storage to retrieve data.
@@ -139,13 +411,15 @@ def get_cmip6(
         Name of the ensemble run of the data. e.g. "r1i1p1f1".
     baseline: str
         Baseline dataset used for regridding. e.g. "chelsa2".
+    output_dir: str
+        Output directory where the CMIP6 climatology will be stored.
+        Default is "./results/cmip6".
     """
 
     if chunks is None:
         chunks = {"time": 100, "lat": 400, "lon": 400}
 
-    output_directory = "./results/cmip6"
-    Path(output_directory).mkdir(parents=True, exist_ok=True)
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
 
     aoi_name, _ = get_aoi_informations(aoi)
 
@@ -201,5 +475,5 @@ def get_cmip6(
             base = xr.open_dataset(baseline_file[0])
             regridder = xe.Regridder(ds_clim, base, "bilinear")
             ds_r = regridder(ds_clim, keep_attrs=True)
-            output_file = f"""{output_directory}/{aoi_n}_CMIP6_global_{institution}_{source}_{experiment}_{member}_none_none_{baseline}_{aggregation.value}_{period[0]}-{period[1]}.nc"""
+            output_file = f"""{output_dir}/{aoi_n}_CMIP6_global_{institution}_{source}_{experiment}_{member}_none_none_{baseline}_{aggregation.value}_{period[0]}-{period[1]}.nc"""
             ds_r.to_netcdf(output_file)

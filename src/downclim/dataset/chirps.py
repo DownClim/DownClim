@@ -13,10 +13,10 @@ from .utils import (
     Aggregation,
     DataProduct,
     Frequency,
+    VariableAttributes,
     get_monthly_climatology,
     get_monthly_mean,
     split_period,
-    variables_attributes,
 )
 
 
@@ -75,7 +75,7 @@ def get_chirps_single_climatology(
         raise ValueError(msg)
 
     ds = ds.rename({"precipitation": "pr"})
-    ds.pr.attrs = variables_attributes["pr"]
+    ds.pr.attrs = VariableAttributes["pr"]
     return ds
 
 
@@ -116,7 +116,7 @@ def get_chirps(
     No output from the function. New file with dataset is stored in the output_dir.
     """
 
-    # Create directory
+    # Create output directory
     Path(output_dir).mkdir(parents=True, exist_ok=True)
 
     # Get AOIs information

@@ -31,15 +31,19 @@ classifiers = [
 ]
 dynamic = ["version"]
 dependencies = [
+  "aenum",
   "numpy",
   "geopandas",
   "pandas",
   "xarray",
-  "xesmf",
+  "xesmf>=0.8",
   "esgf-pyclient",
   "gcsfs",
   "earthengine-api",
   "pydantic",
+  "pygadm",
+  "rioxarray",
+  "zarr",
 ]
 
 [project.optional-dependencies]

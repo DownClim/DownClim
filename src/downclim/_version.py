@@ -3,15 +3,12 @@
 from __future__ import annotations
 
 TYPE_CHECKING = False
-if TYPE_CHECKING:  # noqa: SIM108
-    VERSION_TUPLE = tuple[int | str, ...]
-else:
-    VERSION_TUPLE = object
+VERSION_TUPLE = tuple[int | str, ...] if TYPE_CHECKING else object
 
 version: str
 __version__: str
 __version_tuple__: VERSION_TUPLE
 version_tuple: VERSION_TUPLE
 
-__version__ = version = "0.1.dev79+g3ee8297.d20250122"
-__version_tuple__ = version_tuple = (0, 1, "dev79", "g3ee8297.d20250122")
+__version__ = version = "0.1.dev82+gd4c9284.d20250217"
+__version_tuple__ = version_tuple = (0, 1, "dev82", "gd4c9284.d20250217")

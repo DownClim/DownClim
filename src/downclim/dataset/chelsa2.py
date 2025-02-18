@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime
 import shutil
 import warnings
+from dataclasses import fields
 from pathlib import Path
 from urllib.error import URLError
 from urllib.request import urlopen
@@ -18,9 +19,9 @@ from .utils import (
     Aggregation,
     DataProduct,
     Frequency,
+    VariableAttributes,
     get_monthly_climatology,
     split_period,
-    variables_attributes,
 )
 
 
@@ -45,10 +46,9 @@ def _get_chelsa2_one_file(
     """
 
     chelsa_files = {}
-    base_url = DataProduct.CHELSA.url
 
     if time_freq == Frequency.MONTHLY:
-        url = f"{base_url}/monthly/{variable}/CHELSA_{variable}_{month:02d}_{year}_V.2.1.tif"
+        url = f"{DataProduct.CHELSA.url}/monthly/{variable}/CHELSA_{variable}_{month:02d}_{year}_V.2.1.tif"
     else:
         msg = "Only monthly time frequency is available for retrieving CHELSA data."
         raise ValueError(msg)
@@ -81,7 +81,8 @@ def _get_chelsa2_year(
 
     Returns
     -------
-    dict:
+    dict[str, str]:
+        Paths to the downloaded CHELSA files for the given year, variable and area of interest.
 
     """
 
@@ -110,7 +111,7 @@ def _get_chelsa2_year(
         paths = {}
 
         time_index = pd.Index(
-            pd.date_range(datetime.datetime(year, 1, 1), periods=12, freq="M"),
+            pd.date_range(datetime.datetime(year, 1, 1), periods=12, freq="ME"),
             name="time",
         )
 
@@ -126,7 +127,10 @@ def _get_chelsa2_year(
                 * DataProduct.CHELSA.scale_factor[variable]
                 + DataProduct.CHELSA.add_offset[variable]
             )
-            ds_chelsa[variable].attrs = variables_attributes[variable]
+            var_attrs = VariableAttributes[variable]
+            ds_chelsa[variable].attrs = {
+                v.name: getattr(var_attrs, v.name) for v in fields(var_attrs)
+            }
             output_file = f"{tmp_directory}/CHELSA_{aoi_n}_{variable}_{year}.nc"
             paths[aoi_n] = output_file
             ds_chelsa.chunk(chunks).to_netcdf(output_file)
