@@ -15,14 +15,8 @@ from pydantic import BaseModel, Field, field_validator
 
 from .aoi import get_aoi_informations
 from .connectors import connect_to_gcfs
-from .utils import (
-    Aggregation,
-    DataProduct,
-    Frequency,
-    get_monthly_climatology,
-    prep_dataset,
-    split_period,
-)
+from .utils import (Aggregation, DataProduct, Frequency,
+                    get_monthly_climatology, prep_dataset, split_period)
 
 
 class CMIP6Context(BaseModel):
@@ -63,7 +57,7 @@ class CMIP6Context(BaseModel):
         default="r1i1p1f1", description="Ensemble member"
     )
     frequency: Frequency = Field(
-        default="Frequency.MONTHLY",
+        default=Frequency.MONTHLY,
         example="mon",
         description="Time frequency of the data",
     )
@@ -147,28 +141,31 @@ def _get_cmip6_catalog(
 
 def list_available_cmip6_simulations(
     context: dict[str, str | Iterable[str]] | CMIP6Context,
+    cmip6_catalog_url: str = DataProduct.CMIP6.url
 ) -> pd.DataFrame:
     """List all available CMIP6 simulations available on Google Cloud Storage for a given set of context.
 
     Parameters
     ----------
         context (dict[str, str | Iterable[str]] | CMIP6Context):
-        Object containing information about the query on the CMIP6 dataset. Entries of the dictionary can be
-        either `str` or `Iterables` (e.g. `list`) if multiple values are provides.
+            Object containing information about the query on the CMIP6 dataset. Entries of the dictionary can be
+            either `str` or `Iterables` (e.g. `list`) if multiple values are provides.
 
-        These following keys are available. None are mandatory):
-            - activity_id: str, e.g "ScenarioMIP", "CMIP"
-            - institution_id: str, e.g "IPSL", "NCAR"
-            - source_id: str, e.g "IPSL-CM6A-LR", "CMCC-CM2-HR4"
-            - experiment_id: str, e.g "ssp126", "historical"
-            - member_id: str, e.g "r1i1p1f1"
-            - table_id: str, e.g "Amon", "day"
-            - variable_id: str, e.g "tas", "pr"
-            - grid_label: str, e.g "gn", "gr"
-            - zstore: str, e.g "gs://cmip6/CMIP6/ScenarioMIP/IPSL/IPSL-CM6A-LR/ssp126/r1i1p1f1/Amon/tas/gr/v20190903"
-            - dcpp_init_year: str, e.g "1850", "2015"
-            - version: str, e.g "20190903"
+            These following keys are available. None are mandatory):
+                - activity_id: str, e.g "ScenarioMIP", "CMIP"
+                - institution_id: str, e.g "IPSL", "NCAR"
+                - source_id: str, e.g "IPSL-CM6A-LR", "CMCC-CM2-HR4"
+                - experiment_id: str, e.g "ssp126", "historical"
+                - member_id: str, e.g "r1i1p1f1"
+                - table_id: str, e.g "Amon", "day"
+                - variable_id: str, e.g "tas", "pr"
+                - grid_label: str, e.g "gn", "gr"
+                - zstore: str, e.g "gs://cmip6/CMIP6/ScenarioMIP/IPSL/IPSL-CM6A-LR/ssp126/r1i1p1f1/Amon/tas/gr/v20190903"
+                - dcpp_init_year: str, e.g "1850", "2015"
+                - version: str, e.g "20190903"
 
+        cmip6_catalog_url: str (default: DataProduct.CMIP6.url)
+            URL to the CMIP6 catalog on the Google Cloud File System.
 
     Returns:
     -------
@@ -180,7 +177,7 @@ def list_available_cmip6_simulations(
     # gcfs connection
     # gcfs_connector = connect_to_gcfs()
     # list CMIP6 datasets matching context
-    cmip6_simulations = inspect_cmip6(context)
+    cmip6_simulations = inspect_cmip6(context, cmip6_catalog_url)
     cmip6_simulations = cmip6_simulations.assign(domain="GLOBAL")
     cmip6_simulations = cmip6_simulations.assign(product="output")
 

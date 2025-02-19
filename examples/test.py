@@ -5,17 +5,14 @@ from __future__ import annotations
 from downclim.dataset.aoi import get_aoi, get_aoi_informations
 from downclim.dataset.chelsa2 import get_chelsa2
 from downclim.dataset.chirps import get_chirps
-from downclim.dataset.cmip6 import (
-    CMIP6Context,
-    get_cmip6,
-    get_cmip6_from_list,
-    list_available_cmip6_simulations,
-)
-from downclim.dataset.cordex import CORDEXContext
+from downclim.dataset.cmip6 import (CMIP6Context, get_cmip6,
+                                    get_cmip6_from_list,
+                                    list_available_cmip6_simulations)
+from downclim.dataset.cordex import (CORDEXContext,
+                                     list_available_cordex_simulations)
 from downclim.dataset.gshtd import get_gshtd
 from downclim.downclim import DownClimContext
 from downclim.getters import get_baseline_product
-from downclim.list_projections import list_available_cordex_simulations
 
 # Get AOI
 aoi1 = get_aoi("Vanuatu")
@@ -74,9 +71,11 @@ downclim_context = DownClimContext(
 
 # List available CORDEX simulations
 cordex_context = CORDEXContext(
-    domain=["AUS-44"],
+    domain=["AFR-44"],
+    institute=["SMHI"],
+    driving_model=["IPSL-IPSL-CM5A-MR", "MIROC-MIROC5"],
     experiment=["rcp26", "rcp85"],
-    time_frequency="mon",
+    frequency="mon",
     variable=["pr", "tas"],
 )
 cordex_simulations = list_available_cordex_simulations(
