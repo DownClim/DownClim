@@ -36,7 +36,7 @@ dependencies = [
   "geopandas",
   "pandas",
   "xarray",
-  "xesmf>=0.8",
+  "xesmf>=8.7",
   "esgf-pyclient",
   "gcsfs",
   "earthengine-api",

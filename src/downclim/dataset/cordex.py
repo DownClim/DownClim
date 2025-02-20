@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import warnings
 from collections.abc import Iterable
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -198,6 +199,38 @@ def _get_cordex_wget(
     subprocess.check_output(["/bin/bash", Path(script_name).name], cwd=tmp_dir)
     return True
 
+@lru_cache
+def _get_cordex_domains(
+    url: str = "https://raw.githubusercontent.com/WCRP-CORDEX/domain-tables/main/CORDEX-CMIP5_rotated_grids.csv"
+) -> pd.DataFrame:
+    """Get the CORDEX domains boundaries.
+
+    Args:
+        url (_type_, optional): URL to the CORDEX domains boundaries.
+            Defaults to "https://raw.githubusercontent.com/WCRP-CORDEX/domain-tables/main/CORDEX-CMIP5_rotated_grids.csv".
+
+    Returns:
+        pd.DataFrame: DataFrame containing the boundaries of the CORDEX domains.
+    """
+    return pd.read_csv(url)[["CORDEX_domain", "ll_lon", "ll_lat", "ur_lon", "ur_lat"]]
+
+def _aoi_in_domain(aoi_bounds: pd.DataFrame, domain: pd.DataFrame) -> bool:
+    """Check if the AOI is in the domain.
+
+    Args:
+        aoi_bounds (pd.DataFrame): Boundaries of the AOI.
+        domain (pd.DataFrame): Boundaries of the CORDEX domain.
+
+    Returns:
+        bool: True if the AOI is in the domain, False otherwise.
+    """
+    return (
+        aoi_bounds["minx"].values >= domain["ll_lon"].values
+        and aoi_bounds["miny"].values >= domain["ll_lat"].values
+        and aoi_bounds["maxx"].values <= domain["ur_lon"].values
+        and aoi_bounds["maxy"].values <= domain["ur_lat"].values
+    )[0] is np.True_
+
 def list_available_cordex_simulations(
     context: dict[str, str | Iterable[str]] | CORDEXContext,
     esgf_credential: str = "config/esgf_credential.yaml",
@@ -331,6 +364,24 @@ def inspect_cordex(
     df_cordex["download_script"]=cordex_scripts
     return df_cordex
 
+def get_context_from_filename(filename: str) -> dict[str, str]:
+    """
+    Get the cordex context from a filename parsing.
+
+    Parameters
+    ----------
+    filename: str
+        Filename to parse.
+
+    Returns
+    -------
+    dict: Dictionary containing the context.
+    """
+    only_name = Path(filename).name
+    keys = ["variable", "domain", "driving_model", "experiment", "ensemble", "rcm_model", "downscaling_realisation", "time_frequency", "period"]
+    return dict(zip(keys, only_name.split(".")[0].split("_"), strict=False))
+
+
 def get_cordex_from_list(
     aoi: list[gpd.GeoDataFrame],
     cordex_simulations: pd.DataFrame,
@@ -342,68 +393,76 @@ def get_cordex_from_list(
     tmp_dir: str = "./results/tmp/cordex",
     nb_threads: int = 1,
     keep_tmp_dir: bool = False,
+    esgf_credential: str | None = None,
 ) -> None:
     # Create output directory
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     Path(tmp_dir).mkdir(parents=True, exist_ok=True)
 
     # Get AOIs information
-    aois_names, _ = get_aoi_informations(aoi)
+    aois_names, aois_bounds = get_aoi_informations(aoi)
+    domains = cordex_simulations["domain"].unique()
+    all_cordex_domains = _get_cordex_domains()
+    cordex_domains = all_cordex_domains[all_cordex_domains["CORDEX_domain"].isin(domains)]
+    aoi_in_domain = {}
+    for aoi_n, aoi_b in zip(aois_names, aois_bounds, strict=False):
+        aoi_in_domain[aoi_n] = {
+            domain: _aoi_in_domain(aoi_b, cordex_domains.loc[cordex_domains["CORDEX_domain"]==domain]) for domain in domains
+                }
 
     # connect
-    connector = connect_to_esgf(esgf_credential, server=DataProduct.CORDEX.url)
+    _ = connect_to_esgf(esgf_credential, server=DataProduct.CORDEX.url)
 
-    periods = [baseline_year, evaluation_year, projection_year]
+    # Define time periods
+    periods_years = [baseline_year, evaluation_year, projection_year]
+    periods_names = ["baseline", "evaluation", "projection"]
+
     # download
     pool = mp.Pool(nb_threads)
     pool.starmap_async(
         _get_cordex_wget,
-        [(script, i, periods, tmp_dir) for i, script in enumerate(cordex_simulations["download_script"])],
+        [(script, i, periods_years, tmp_dir) for i, script in enumerate(cordex_simulations["download_script"])],
     ).get()
     pool.close()
 
-    # read & prepare
+    # rearrange and sort files downloaded
     files = [f"{tmp_dir}/{f}" for f in os.listdir(tmp_dir) if re.match(r".*\.(nc)", f)]
-    files_hist = [f for f in files if re.search("_historical", f)]
-    files_rcp = [f for f in files if f not in files_hist]
-    ds_hist = xr.open_mfdataset(files_hist, parallel=True)
-    ds_rcp = xr.open_mfdataset(files_rcp, parallel=True)
-    ds_hist = prep_dataset(ds_hist, DataProduct.CORDEX)
-    ds_rcp = prep_dataset(ds_rcp, DataProduct.CORDEX)
+    df_files = []
+    for f in files:
+        df_f = pd.DataFrame.from_dict(get_context_from_filename(f), orient='index').T
+        df_f['filename'] = f
+        df_files.append(df_f)
+    df_files = pd.concat(df_files, ignore_index=True)
 
-    # Define time periods
-    period_reference_products = [
-        baseline_product,
-        evaluation_product,
-        evaluation_product,
-    ]
-    period_reference_outputs = [
-        baseline_output_dir,
-        evaluation_output_dir,
-        evaluation_output_dir,
-    ]
-    periods = [baseline_year, evaluation_year, projection_year]
+    # group files for each simulation
+    group_context = ["domain", "driving_model", "ensemble", "rcm_model", "downscaling_realisation"]
+    for group_name, group in df_files.groupby(group_context):
+        # read & prepare
+        ds = xr.open_mfdataset(group["filename"], parallel=True)
+        ds = prep_dataset(ds, DataProduct.CORDEX)
+        # For each aoi
+        for aoi_n, aoi_b in zip(aois_names, aois_bounds, strict=False):
+            # Extend the AOI to avoid edge effects
+            aoi_b["minx"] -= 2
+            aoi_b["miny"] -= 2
+            aoi_b["maxx"] += 2
+            aoi_b["maxy"] += 2
+            ds_aoi = ds.sel(lon=slice(aoi_b["minx"], aoi_b["maxx"]), lat=slice(aoi_b["miny"], aoi_b["maxy"]))
+            # write per aoi and period
+            for period_year, period_name in zip(periods_years, periods_names, strict=False):
+                tmin, tmax = split_period(period_year)
 
-    # regrid and write per aoi and period
-    for period_reference_product, period_reference_output, period in zip(
-        period_reference_products, period_reference_outputs, periods, strict=False
-    ):
-        tmin, tmax = split_period(period)
-        if aggregation == Aggregation.MONTHLY_MEAN:
-            ds_clim = get_monthly_climatology(ds.sel(time=slice(tmin, tmax)))
-        else:
-            msg = "Currently only monthly-means aggregation available!"
-            raise ValueError(msg)
-        for aoi_n in aois_names:
-            output_file = f"{output_dir}/{aoi_n}_CORDEX_{domain}_{institution}_{source}_{experiment}_{member}_none_none_{baseline}_{aggregation.value}_{period[0]}-{period[1]}.nc"
-            reference_file = f"{period_reference_output}/{aoi_n}_{period_reference_product.product_name}_{aggregation.value}_{period[0]}-{period[1]}.nc"
-            reference = xr.open_dataset(reference_file)
-            regridder = xe.Regridder(
-                ds_clim, reference, "bilinear", ignore_degenerate=True
-            )
-            ds_clim_r = regridder(ds_clim, keep_attrs=True)
-            path = f"{Path(check_file).parent}/{aoi}_CORDEX_{domain}_{institute}_{model}_{experiment}_{ensemble}_{rcm}_{downscaling}_{baseline}_{aggregation}_{period}.nc"
-            ds_a.to_netcdf(output_file)
+                print(f"""Extracting CORDEX data for {period_name}, years {tmin} to {tmax},
+                  for the area of interest {aoi_n}.""")
+
+                if aggregation == Aggregation.MONTHLY_MEAN:
+                    ds_clim = get_monthly_climatology(ds_aoi.sel(time=slice(tmin, tmax)))
+                else:
+                    msg = "Currently only monthly-means aggregation available!"
+                    raise ValueError(msg)
+                for aoi_n in aois_names:
+                    output_file = f"{output_dir}/{aoi_n}_CORDEX_{domain}_{institution}_{source}_{experiment}_{member}_none_none_{baseline}_{aggregation.value}_{period[0]}-{period[1]}.nc"
+                    ds_clim.to_netcdf(output_file)
 
     if not keep_tmp_dir:
         shutil.rmtree(tmp_dir)
