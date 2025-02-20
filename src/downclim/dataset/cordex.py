@@ -12,6 +12,7 @@ from typing import Any
 
 import geopandas as gpd
 import multiprocess as mp
+import numpy as np
 import pandas as pd
 import pyesgf
 import xarray as xr
