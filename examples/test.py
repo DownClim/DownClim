@@ -5,10 +5,10 @@ from __future__ import annotations
 from downclim.dataset.aoi import get_aoi, get_aoi_informations
 from downclim.dataset.chelsa2 import get_chelsa2
 from downclim.dataset.chirps import get_chirps
-from downclim.dataset.cmip6 import (CMIP6Context, get_cmip6,
-                                    get_cmip6_from_list,
+from downclim.dataset.cmip6 import (CMIP6Context, get_cmip6_from_list,
                                     list_available_cmip6_simulations)
-from downclim.dataset.cordex import (CORDEXContext,
+from downclim.dataset.cordex import (CORDEXContext, get_cordex_from_list,
+                                     get_download_scripts,
                                      list_available_cordex_simulations)
 from downclim.dataset.gshtd import get_gshtd
 from downclim.downclim import DownClimContext
@@ -16,7 +16,7 @@ from downclim.getters import get_baseline_product
 
 # Get AOI
 aoi1 = get_aoi("Vanuatu")
-aoi2 = get_aoi((30, 30, 40, 40, "box"))
+aoi2 = get_aoi((10, 10, 20, 20, "box"))
 aoi = [aoi1, aoi2]
 aoi_name, aoi_bound = get_aoi_informations(aoi)
 
@@ -69,12 +69,12 @@ downclim_context = DownClimContext(
     baseline_product="chelsa2",
 )
 
-# List available CORDEX simulations
+# Get CORDEX simulations
 cordex_context = CORDEXContext(
-    domain=["AFR-44"],
-    institute=["SMHI"],
-    driving_model=["IPSL-IPSL-CM5A-MR", "MIROC-MIROC5"],
-    experiment=["rcp26", "rcp85"],
+    domain=["AUS-22", "AFR-44"],
+    #institute=["SMHI"],
+    #driving_model=["IPSL-IPSL-CM5A-MR", "MIROC-MIROC5"],
+    experiment=["historical", "rcp26", "rcp85"],
     frequency="mon",
     variable=["pr", "tas"],
 )
@@ -82,7 +82,22 @@ cordex_simulations = list_available_cordex_simulations(
     cordex_context, esgf_credential="config/esgf_credential.yaml"
 )
 
-# List available CMIP6 simulations
+cordex_simulations = get_download_scripts(
+    cordex_simulations, esgf_credential="config/esgf_credential.yaml"
+)
+
+get_cordex_from_list(
+    aoi=aoi,
+    cordex_simulations=cordex_simulations,
+    baseline_year=(1980, 1981),
+    evaluation_year=(2006, 2007),
+    projection_year=(2071, 2072),
+    output_dir="./results/cordex",
+    tmp_dir = "./results/tmp/cordex",
+    keep_tmp_dir = True
+)
+
+# Get CMIP6 simulations
 cmip6_context = CMIP6Context(
     project=["ScenarioMIP", "CMIP"],
     institute=["NOAA-GFDL", "CMCC"],
