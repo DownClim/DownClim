@@ -11,21 +11,21 @@ from downclim import DownClimContext
 
 
 # Fixtures
-@pytest.fixture()
+@pytest.fixture
 def valid_minimal_context():
     return {
         "aoi": gpd.GeoDataFrame(geometry=[box(0, 0, 1, 1)]),
         "variables": ["tas"],
-        "baseline_years": (1980, 2000),
-        "evaluation_years": (2001, 2020),
-        "projection_years": (2021, 2040),
+        "baseline_periods": (1980, 2000),
+        "evaluation_periods": (2001, 2020),
+        "projection_periods": (2021, 2040),
         "evaluation_products": ["chelsa"],
         "baseline_output_directory": "data/baseline",
         "evaluation_output_directory": "data/evaluation",
     }
 
 
-@pytest.fixture()
+@pytest.fixture
 def valid_full_context(valid_minimal_context):
     return {
         **valid_minimal_context,
@@ -66,9 +66,9 @@ def test_invalid_context():
 
 
 # Tests de validation
-def test_projection_years_validation(valid_minimal_context):
+def test_projection_periods_validation(valid_minimal_context):
     invalid_context = valid_minimal_context.copy()
-    invalid_context["projection_years"] = (2010, 2200)
+    invalid_context["projection_periods"] = (2010, 2200)
     with pytest.raises(ValidationError):
         DownClimContext(**invalid_context)
 
@@ -95,9 +95,9 @@ def test_from_yaml_template(tmp_path):
     yaml_path.write_text("""
     aoi: POLYGON((0 0, 0 1, 1 1, 1 0, 0 0))
     variables: ["tas"]
-    baseline_years: [1980, 2000]
-    evaluation_years: [2001, 2020]
-    projection_years: [2021, 2040]
+    baseline_periods: [1980, 2000]
+    evaluation_periods: [2001, 2020]
+    projection_periods: [2021, 2040]
     evaluation_products: ["chelsa"]
     baseline_output_directory: "data/baseline"
     evaluation_output_directory: "data/evaluation"

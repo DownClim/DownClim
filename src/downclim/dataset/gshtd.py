@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from dataclasses import asdict
 from pathlib import Path
 
 import ee
@@ -8,7 +9,7 @@ import geopandas as gpd
 import pandas as pd
 import xarray as xr
 
-from .aoi import get_aoi_informations
+from ..aoi import get_aoi_informations
 from .connectors import connect_to_ee
 from .utils import (
     Aggregation,
@@ -17,6 +18,7 @@ from .utils import (
     VariableAttributes,
     get_monthly_climatology,
     get_monthly_mean,
+    prep_dataset,
     split_period,
 )
 
@@ -36,14 +38,17 @@ def get_gshtd_single(
     dmin, dmax = split_period(period)
 
     collection = {"tas": "TMEAN", "tasmin": "TMIN", "tasmax": "TMAX"}
-    ic = ee.ImageCollection(DataProduct.GSHTD.url + collection[variable]).filterDate(
-        dmin, dmax
-    )
+    ic = ee.ImageCollection(DataProduct.GSHTD.url + collection[variable]).filterDate(dmin, dmax)
     geom = ee.Geometry.Rectangle(*aoi_bounds.to_numpy()[0])
     ds = xr.open_dataset(
         ic, engine="ee", projection=ic.first().select(0).projection(), geometry=geom
     )
+
     ds = ds.transpose("time", "lat", "lon")
+    ds = ds.rename({"b1": variable})
+    ds = prep_dataset(ds, DataProduct.GSHTD)
+    ds[variable].attrs = asdict(VariableAttributes[variable])
+
     if time_frequency == Frequency.MONTHLY:
         ds = get_monthly_mean(ds)
     else:
@@ -55,13 +60,9 @@ def get_gshtd_single(
     else:
         msg = "Currently only monthly-means aggregation available!"
         raise ValueError(msg)
-    ds = ds.where(ds.b1 > 0)
-    ds["b1"] = (
-        ds.b1 * DataProduct.GSHTD.scale_factor[variable]
-        + DataProduct.GSHTD.add_offset[variable]
-    )  # K to °C
-    ds.b1.attrs = VariableAttributes[variable]
-    return ds.rename({"b1": variable})
+    ds = ds.where(ds[variable] > 0)
+
+    return ds
 
 
 # code
@@ -71,7 +72,8 @@ def get_gshtd(
     period: tuple[int, int] = (1980, 2005),
     time_frequency: Frequency = Frequency.MONTHLY,
     aggregation: Aggregation = Aggregation.MONTHLY_MEAN,
-    output_dir: str = "./results/gshtd",
+    output_dir: str | None = None,
+    **kwargs: dict[str, any],
 ) -> None:
     """
     Get GSHTD data (https://gee-community-catalog.org/projects/gshtd/)
@@ -99,23 +101,31 @@ def get_gshtd(
     output_dir: str, optional
         Output directory where the GSHTD climatology will be stored.
         Defaults to "./results/gshtd".
+    **kwargs: Any, optional
+        Dictionary containing the connection parameters to the Earth Engine API.
 
     Returns
     -------
     No output from the function. New file with dataset is stored in the output_dir.
     """
 
+    data_product = DataProduct.GSHTD
+
+    # Create output directory
+    if output_dir is None:
+        output_dir = f"./results/{data_product.product_name}"
     Path(output_dir).mkdir(parents=True, exist_ok=True)
 
+    # Get AOIs information
     aoi_name, aoi_bound = get_aoi_informations(aoi)
 
-    connect_to_ee()
+    connect_to_ee(**kwargs)
 
     print("Downloading GSHTD data...")
     for aoi_n, aoi_b in zip(aoi_name, aoi_bound, strict=False):
         # First check if the data is already downloaded
         output_file = (
-            f"{output_dir}/{aoi_n}_gshtd_{aggregation.value}_{period[0]}-{period[1]}.nc"
+            f"{output_dir}/{aoi_n}_{data_product.product_name}_{aggregation.value}_{period[0]}-{period[1]}.nc"
         )
         if Path(output_file).is_file():
             print(

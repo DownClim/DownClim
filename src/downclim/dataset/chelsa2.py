@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime
 import shutil
 import warnings
-from dataclasses import fields
+from dataclasses import asdict
 from pathlib import Path
 from urllib.error import URLError
 from urllib.request import urlopen
@@ -14,13 +14,14 @@ import rioxarray as rio
 import xarray as xr
 from multiprocess import Pool
 
-from .aoi import get_aoi_informations
+from ..aoi import get_aoi_informations
 from .utils import (
     Aggregation,
     DataProduct,
     Frequency,
     VariableAttributes,
     get_monthly_climatology,
+    prep_dataset,
     split_period,
 )
 
@@ -63,7 +64,7 @@ def _get_chelsa2_one_file(
 
     ds = rio.open_rasterio(url).to_dataset("band").rename_vars({1: variable})
     for aoi_n, aoi_b in zip(aoi_name, aoi_bound, strict=False):
-        chelsa_files[aoi_n] = ds.rio.clip_box(*aoi_b.to_numpy()[0])
+        chelsa_files[aoi_n] = ds.rio.clip_box(*aoi_b.to_numpy()[0]).assign_coords(time=datetime.datetime(year,month,1))
     return chelsa_files
 
 
@@ -87,16 +88,16 @@ def _get_chelsa2_year(
     """
 
     if all(
-        Path(f"{tmp_directory}/CHELSA_{aoi_name}_{variable}_{year}.nc").is_file()
-        for aoi_name in aoi_name
+        Path(f"{tmp_directory}/{DataProduct.CHELSA.product_name}_{aoi_n}_{variable}_{year}.nc").is_file()
+        for aoi_n in aoi_name
     ):
         print(f"""CHELSA data for year '{year}' and variable '{variable}' already downloaded. Not downloading,
               but the behaviour of the function is not affected.
               If this is not the desired behavior, please remove the file(s) from the temporary folder
               {tmp_directory} and rerun the function.""")
         paths = {
-            aoi_name: f"{tmp_directory}/CHELSA_{aoi_name}_{variable}_{year}.nc"
-            for aoi_name in aoi_name
+            aoi_n: f"{tmp_directory}/{DataProduct.CHELSA.product_name}_{aoi_n}_{variable}_{year}.nc"
+            for aoi_n in aoi_name
         }
 
     else:
@@ -110,30 +111,19 @@ def _get_chelsa2_year(
 
         paths = {}
 
-        time_index = pd.Index(
-            pd.date_range(datetime.datetime(year, 1, 1), periods=12, freq="ME"),
-            name="time",
-        )
-
         for aoi_n in aoi_name:
-            ds_chelsa = xr.concat(
-                [chelsa_data[aoi_n] for chelsa_data in chelsa_datas], time_index
-            )
+            print(f"Concatenating data for area of interest : {aoi_n}")
+            ds_chelsa = xr.concat([chelsa_data[aoi_n] for chelsa_data in chelsa_datas], dim='time')
             for chelsa_data in chelsa_datas:
                 del chelsa_data[aoi_n]
             ds_chelsa = ds_chelsa[["time", "x", "y", variable]]
-            ds_chelsa[variable].values = (
-                ds_chelsa[variable].to_numpy()
-                * DataProduct.CHELSA.scale_factor[variable]
-                + DataProduct.CHELSA.add_offset[variable]
-            )
-            var_attrs = VariableAttributes[variable]
-            ds_chelsa[variable].attrs = {
-                v.name: getattr(var_attrs, v.name) for v in fields(var_attrs)
-            }
-            output_file = f"{tmp_directory}/CHELSA_{aoi_n}_{variable}_{year}.nc"
+            ds_chelsa = prep_dataset(ds_chelsa, DataProduct.CHELSA)
+
+            ds_chelsa[variable].attrs = asdict(VariableAttributes[variable])
+            output_file = f"{tmp_directory}/{DataProduct.CHELSA.product_name}_{aoi_n}_{variable}_{year}.nc"
             paths[aoi_n] = output_file
-            ds_chelsa.chunk(chunks).to_netcdf(output_file)
+            print(f"saving file {output_file}")
+            ds_chelsa.chunk(chunks).to_netcdf(output_file) if chunks else ds_chelsa.to_netcdf(output_file)
             del ds_chelsa
     return paths
 
@@ -145,8 +135,8 @@ def get_chelsa2(
     frequency: Frequency = Frequency.MONTHLY,
     aggregation: Aggregation = Aggregation.MONTHLY_MEAN,
     nb_threads: int = 4,
-    output_dir: str = "./results/chelsa2",
-    tmp_dir: str = "./results/tmp/chelsa2",
+    output_dir: str | None = None,
+    tmp_dir: str | None = None,
     keep_tmp_dir: bool = False,
 ) -> None:
     """
@@ -190,7 +180,13 @@ def get_chelsa2(
     No output from the function. New file with dataset is stored in the output_dir.
     """
 
+    data_product = DataProduct.CHELSA
+
     # Create directories
+    if output_dir is None:
+        output_dir = f"./results/{data_product.product_name}"
+    if tmp_dir is None:
+        tmp_dir = f"./results/tmp/{data_product.product_name}"
     Path(tmp_dir).mkdir(parents=True, exist_ok=True)
     Path(output_dir).mkdir(parents=True, exist_ok=True)
 
@@ -198,7 +194,7 @@ def get_chelsa2(
     aoi_name, aoi_bound = get_aoi_informations(aoi)
 
     # Get years to retrieve
-    #    periods = [baseline_year, evaluation_year]
+    #    periods = [baseline_period, evaluation_period]
     #    years = set().union(*[list(range(period[0], period[1] + 1)) for period in periods])
     years = list(range(period[0], period[1] + 1))
 
@@ -214,12 +210,12 @@ def get_chelsa2(
 
     print("Downloading CHELSA data...")
     # Actual data retrieval
-    pool = Pool(nb_threads)
     paths = []
+    pool = Pool(nb_threads)
     for var in variable:
         paths.append(
-            #            pool.starmap_async(
-            pool.starmap(
+            pool.starmap_async(
+            #pool.starmap(
                 _get_chelsa2_year,
                 [
                     (aoi_name, aoi_bound, year, var, frequency, tmp_dir)
@@ -233,11 +229,11 @@ def get_chelsa2(
     }
     del paths
 
-    print("Merging files...")
+    print("Merging files by aoi...")
     # Merge files to get one file per aoi for all periods
     for aoi_n in aoi_name:
         # We first need to check if the files exist before processing data
-        output_filename = f"{output_dir}/{aoi_n}_chelsa2_{aggregation.value}_{period[0]}-{period[1]}.nc"
+        output_filename = f"{output_dir}/{aoi_n}_{data_product.product_name}_{aggregation.value}_{period[0]}-{period[1]}.nc"
         if not Path(output_filename).is_file():
             # if not all files for aoi_n exist, we need to process the data
             print("Merging files for area " + aoi_n + "...")
@@ -245,9 +241,14 @@ def get_chelsa2(
                 paths2[aoi_n], decode_coords="all", parallel=True
             )
             dmin, dmax = split_period(period)
-            ds_aoi_period_clim = get_monthly_climatology(
-                ds_aoi_period.sel(time=slice(dmin, dmax))
-            )
+
+            if aggregation == Aggregation.MONTHLY_MEAN:
+                ds_aoi_period_clim = get_monthly_climatology(
+                    ds_aoi_period.sel(time=slice(dmin, dmax))
+                )
+            else:
+                msg = "Currently only monthly-means aggregation available!"
+                raise ValueError(msg)
             ds_aoi_period_clim.to_netcdf(output_filename)
         else:
             print(

@@ -18,9 +18,9 @@ use_cordex: "False"
 use cmip6: "True"
 cordex_context: {}
 cmip6_context: {}
-baseline_years: (1980, 2005)
-evaluation_years: (2006, 2019)
-projection_years: (2071, 2100)
+baseline_periods: (1980, 2005)
+evaluation_periods: (2006, 2019)
+projection_periods: (2071, 2100)
 evaluation_product: ["chirps", "chelsa2"]
 
 # internal computation

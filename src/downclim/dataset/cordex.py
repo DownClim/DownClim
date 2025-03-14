@@ -19,10 +19,16 @@ import xarray as xr
 import xesmf as xe
 from pydantic import BaseModel, Field, field_validator
 
-from .aoi import get_aoi_informations
+from ..aoi import get_aoi_informations
 from .connectors import connect_to_esgf
-from .utils import (Aggregation, DataProduct, Frequency,
-                    get_monthly_climatology, prep_dataset, split_period)
+from .utils import (
+    Aggregation,
+    DataProduct,
+    Frequency,
+    get_monthly_climatology,
+    prep_dataset,
+    split_period,
+)
 
 simulations_columns = [
         "project",
@@ -275,6 +281,8 @@ def get_download_scripts(
     facets = ", ".join(simulations_columns)
     cordex_scripts = []
     for _, row in simulations.iterrows():
+        print("Getting download script for simulation:")
+        print(row)
         context = row.to_dict()
         context["version"]=context["version"][1:]
         context["data_node"]=context.pop("datanode")
@@ -418,23 +426,77 @@ def get_context_from_filename(filename: str) -> dict[str, str]:
     keys = ["variable", "domain", "driving_model", "experiment", "ensemble", "rcm_name", "rcm_version", "time_frequency", "period"]
     return dict(zip(keys, only_name.split(".")[0].split("_"), strict=False))
 
+def get_filename_from_cordex_context(
+    output_dir: str,
+    aoi_n: str,
+    data_product: DataProduct,
+    domain: str,
+    driving_model: str,
+    rcm_name: str,
+    ensemble: str,
+    rcm_version: str,
+    aggregation: Aggregation,
+    tmin: int,
+    tmax: int,
+) -> str:
+    """Get the name of the output file for the simulation."""
+    return f"{output_dir}/{aoi_n}_{data_product.product_name}_{domain}_{driving_model}_{rcm_name}_{ensemble}_\
+                    {rcm_version}_{aggregation.value}_{tmin}-{tmax}.nc"
+
+
+def get_cordex_context_from_filename(filename: str) -> dict[str, str]:
+    """Get CMIP6 context from a filename.
+
+    Parameters
+    ----------
+    filename: str
+        Filename containing CMIP6 context of the simulation.
+
+    Returns
+    -------
+    dict[str, str]
+        List of main CMIP6 context information, including:
+            - output_dir
+            - aoi_n
+            - data_product
+            - domain
+            - driving_model
+            - rcm_name
+            - ensemble
+            - rcm_version
+            - aggregation
+            - tmin
+            - tmax
+
+    """
+    context_items = ["output_dir", "aoi_n", "data_product", "domain", "driving_model", "rcm_name", "ensemble", "rcm_version", "aggregation", "tmin", "tmax"]
+    context_elements = [str(Path(filename).parent), *Path(filename).name.split(".nc")[0].split("_")]
+    return dict(zip(context_items, context_elements, strict=False))
+
 
 def get_cordex_from_list(
     aoi: list[gpd.GeoDataFrame],
     cordex_simulations: pd.DataFrame,
-    baseline_year: tuple[int, int] = (1980, 2005),
-    evaluation_year: tuple[int, int] = (2006, 2019),
-    projection_year: tuple[int, int] = (2071, 2100),
+    baseline_period: tuple[int, int] = (1980, 2005),
+    evaluation_period: tuple[int, int] = (2006, 2019),
+    projection_period: tuple[int, int] = (2071, 2100),
     aggregation: Aggregation = Aggregation.MONTHLY_MEAN,
-    output_dir: str = "./results/cordex",
-    tmp_dir: str = "./results/tmp/cordex",
+    output_dir: str | None = None,
+    tmp_dir: str | None = None,
     nb_threads: int = 2,
     keep_tmp_dir: bool = False,
     esgf_credential: str | None = None,
 ) -> None:
+
+    data_product = DataProduct.CORDEX
+
     # Create output directory
-    Path(output_dir).mkdir(parents=True, exist_ok=True)
+    if output_dir is None:
+        output_dir = f"./results/{data_product.product_name}"
+    if tmp_dir is None:
+        tmp_dir = f"./results/tmp/{data_product.product_name}"
     Path(tmp_dir).mkdir(parents=True, exist_ok=True)
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
 
     # Get AOIs information
     aois_names, aois_bounds = get_aoi_informations(aoi)
@@ -447,13 +509,15 @@ def get_cordex_from_list(
             domain: _aoi_in_domain(aoi_b, cordex_domains.loc[cordex_domains["CORDEX_domain"]==domain]) for domain in domains
                 }
 
-    # connect
-    if esgf_credential is not None:
-        _ = connect_to_esgf(esgf_credential, server=DataProduct.CORDEX.url)
-
-    # Define time periods
-    periods_years = [baseline_year, evaluation_year, projection_year]
-    periods_names = ["baseline", "evaluation", "projection"]
+    # check if need to et the download scripts
+    if 'download_script' not in cordex_simulations.columns:
+        if esgf_credential is not None:
+            cordex_simulations = get_download_scripts(cordex_simulations, esgf_credential)
+        else:
+            msg = """To retrieve the desired CORDEX data, you need to get the 'download_scripts' from ESGF.
+            Please provide 'esgf_credential' as argument to the function to do so, or run the 'get_download_scripts'
+            to populate the DataFrame with the adequate 'download_scripts' column."""
+            raise KeyError(msg)
 
     # download
     pool = mp.Pool(nb_threads)
@@ -472,6 +536,10 @@ def get_cordex_from_list(
         df_files.append(df_f)
     df_files = pd.concat(df_files, ignore_index=True)
 
+    # Define time periods
+    periods_years = [baseline_period, evaluation_period, projection_period]
+    periods_names = ["baseline", "evaluation", "projection"]
+
     # group files for each simulation
     group_context = ["domain", "driving_model", "ensemble", "rcm_name", "rcm_version"]
     for group_name, group in df_files.groupby(group_context):
@@ -487,24 +555,24 @@ def get_cordex_from_list(
                 warnings.warn(msg, stacklevel=1)
                 continue
             # Extend the AOI to avoid edge effects
-            aoi_b["minx"] -= 2
-            aoi_b["miny"] -= 2
-            aoi_b["maxx"] += 2
-            aoi_b["maxy"] += 2
-            ds_aoi = ds.sel(lon=slice(aoi_b["minx"], aoi_b["maxx"]), lat=slice(aoi_b["miny"], aoi_b["maxy"]))
+            ds_aoi = ds.sel(
+                rlon=slice(aoi_b["minx"].iloc[0] - 2, aoi_b["maxx"].iloc[0] + 2),
+                rlat=slice(aoi_b["miny"].iloc[0] - 2, aoi_b["maxy"].iloc[0] + 2)
+                )
             # write per aoi and period
             for period_year, period_name in zip(periods_years, periods_names, strict=False):
                 tmin, tmax = split_period(period_year)
                 print(f"""Extracting CORDEX data for {period_name}, years {tmin} to {tmax},
-                  for the area of interest {aoi_n}, and simulation
+                  for the area of interest \"{aoi_n}\", and simulation
                   {domain}_{driving_model}_{ensemble}_{rcm_name}_{rcm_version}""")
                 if aggregation == Aggregation.MONTHLY_MEAN:
                     ds_clim = get_monthly_climatology(ds_aoi.sel(time=slice(tmin, tmax)))
                 else:
                     msg = "Currently only monthly-means aggregation available!"
                     raise ValueError(msg)
-                output_file = f"{output_dir}/{aoi_n}_CORDEX_{domain}_{driving_model}_{rcm_name}_{ensemble}_\
-                    {rcm_version}_{aggregation.value}_{tmin}-{tmax}.nc"
+                output_file = get_filename_from_cordex_context(
+                    output_dir, aoi_n, data_product, domain, driving_model, rcm_name, ensemble, rcm_version, aggregation, tmin, tmax
+                )
                 ds_clim.to_netcdf(output_file)
 
     if not keep_tmp_dir:
@@ -520,9 +588,9 @@ def get_cordex_from_list(
 def get_cordex(
     aois: list[gpd.GeoDataFrame],
     variables: list[str],
-    baseline_year: tuple[int, int] = (1980, 2005),
-    evaluation_year: tuple[int, int] = (2006, 2019),
-    projection_year: tuple[int, int] = (2071, 2100),
+    baseline_period: tuple[int, int] = (1980, 2005),
+    evaluation_period: tuple[int, int] = (2006, 2019),
+    projection_period: tuple[int, int] = (2071, 2100),
     # time_frequency: str = "mon",
     aggregation: str = "monthly-means",
     domain: str = "EUR-11",
@@ -620,7 +688,7 @@ def get_cordex(
     ds_rcp = prep_dataset(ds_rcp)
 
     check_file = "toto.nc"
-    periods = [baseline_year, evaluation_year, projection_year]
+    periods = [baseline_period, evaluation_period, projection_period]
     # regrid and write per country
     for aoi in aois:
         base_file = f"{Path(check_file).parent}/{aoi}_base.nc"

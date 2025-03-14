@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import asdict
 from pathlib import Path
 
 import ee
@@ -7,7 +8,7 @@ import geopandas as gpd
 import pandas as pd
 import xarray as xr
 
-from .aoi import get_aoi_informations
+from ..aoi import get_aoi_informations
 from .connectors import connect_to_ee
 from .utils import (
     Aggregation,
@@ -16,6 +17,7 @@ from .utils import (
     VariableAttributes,
     get_monthly_climatology,
     get_monthly_mean,
+    prep_dataset,
     split_period,
 )
 
@@ -62,6 +64,10 @@ def get_chirps_single_climatology(
         [ic], engine="ee", projection=ic.first().select(0).projection(), geometry=geom
     )
     ds = ds.transpose("time", "lat", "lon")
+    ds = ds.rename({"precipitation": "pr"})
+    ds = prep_dataset(ds, DataProduct.CHIRPS)
+    ds.pr.attrs = asdict(VariableAttributes["pr"])
+
     if time_frequency == Frequency.MONTHLY:
         ds = get_monthly_mean(ds)
     else:
@@ -74,8 +80,6 @@ def get_chirps_single_climatology(
         msg = "Currently only monthly-means aggregation available!"
         raise ValueError(msg)
 
-    ds = ds.rename({"precipitation": "pr"})
-    ds.pr.attrs = VariableAttributes["pr"]
     return ds
 
 
@@ -84,7 +88,8 @@ def get_chirps(
     period: tuple[int, int] = (1980, 2005),
     time_frequency: Frequency = Frequency.MONTHLY,
     aggregation: Aggregation = Aggregation.MONTHLY_MEAN,
-    output_dir: str = "./results/chirps",
+    output_dir: str | None = None,
+    **kwargs: dict[str, any],
 ) -> None:
     """Retrieve CHIRPS precipitation data for a list of areas of interest and periods. This returns one monthly climatological
     xarray.Dataset object / netcdf file for each region and period.
@@ -110,24 +115,32 @@ def get_chirps(
     output_dir: str, optional
         Output directory where the CHIRPS climatology will be stored.
         Defaults to "./results/chirps".
+    **kwargs: Any, optional
+        Connection parameters to the Earth Engine API.
+        It should at least contain "project" with the name of the Earth Engine project.
 
     Returns
     -------
     No output from the function. New file with dataset is stored in the output_dir.
     """
 
+    data_product = DataProduct.CHIRPS
+
     # Create output directory
+    if output_dir is None:
+        output_dir = f"./results/{data_product.product_name}"
     Path(output_dir).mkdir(parents=True, exist_ok=True)
 
     # Get AOIs information
     aois_names, aois_bounds = get_aoi_informations(aoi)
 
-    connect_to_ee()
+    # Connect to Earth Engine
+    connect_to_ee(**kwargs)
 
     print("Downloading CHIRPS data...")
     for aoi_n, aoi_b in zip(aois_names, aois_bounds, strict=False):
         # First check if the data is already downloaded
-        output_file = f"{output_dir}/{aoi_n}_chirps_{aggregation.value}_{period[0]}-{period[1]}.nc"
+        output_file = f"{output_dir}/{aoi_n}_{data_product.product_name}_{aggregation.value}_{period[0]}-{period[1]}.nc"
         if Path(output_file).is_file():
             print(
                 f"""File {output_file} already exists, skipping...

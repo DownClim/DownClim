@@ -25,15 +25,15 @@ def get_baseline_product(context: DownClimContext) -> None:
         get_chelsa2(
             aoi=context.aoi,
             variable=context.variable,
-            baseline_year=context.baseline_year,
-            evaluation_year=context.evaluation_year,
+            baseline_period=context.baseline_period,
+            evaluation_period=context.evaluation_period,
             keep_tmp_dir=context.keep_tmp_dir,
         )
     elif context.baseline_product is DataProduct.CHIRPS:
         get_chirps(
             aoi=context.aoi,
-            baseline_year=context.baseline_year,
-            evaluation_year=context.evaluation_year,
+            baseline_period=context.baseline_period,
+            evaluation_period=context.evaluation_period,
             time_frequency=context.time_frequency,
             aggregation=context.downscaling_aggregation,
         )
@@ -41,8 +41,8 @@ def get_baseline_product(context: DownClimContext) -> None:
         get_gshtd(
             aoi=context.aoi,
             variable=context.variable,
-            baseline_year=context.baseline_year,
-            evaluation_year=context.evaluation_year,
+            baseline_period=context.baseline_period,
+            evaluation_period=context.evaluation_period,
             time_frequency=context.time_frequency,
             aggregation=context.downscaling_aggregation,
         )
@@ -67,7 +67,7 @@ def get_evaluation_product(context: DownClimContext) -> None:
         get_chelsa2(
             aoi=context.aoi,
             variable=context.variable,
-            year=context.baseline_year,
+            year=context.baseline_period,
             frequency=context.time_frequency,
             aggregation=context.downscaling_aggregation,
             nb_threads=context.nb_threads,
@@ -77,8 +77,8 @@ def get_evaluation_product(context: DownClimContext) -> None:
     elif context.evaluation_product is DataProduct.CHIRPS:
         get_chirps(
             aoi=context.aoi,
-            baseline_year=context.baseline_year,
-            evaluation_year=context.evaluation_year,
+            baseline_period=context.baseline_period,
+            evaluation_period=context.evaluation_period,
             time_frequency=context.time_frequency,
             aggregation=context.downscaling_aggregation,
         )
@@ -86,8 +86,8 @@ def get_evaluation_product(context: DownClimContext) -> None:
         get_gshtd(
             aoi=context.aoi,
             variable=context.variable,
-            baseline_year=context.baseline_year,
-            evaluation_year=context.evaluation_year,
+            baseline_period=context.baseline_period,
+            evaluation_period=context.evaluation_period,
             time_frequency=context.time_frequency,
             aggregation=context.downscaling_aggregation,
         )
@@ -114,9 +114,9 @@ def get_simulations(context: DownClimContext) -> None:
         get_cmip6(
             aoi=context.aoi,
             variable=cmip6_context.variable_id,
-            baseline_year=context.baseline_year,
-            evaluation_year=context.evaluation_year,
-            projection_year=context.projection_year,
+            baseline_period=context.baseline_period,
+            evaluation_period=context.evaluation_period,
+            projection_period=context.projection_period,
             time_frequency=context.time_frequency,
             aggregation=context.downscaling_aggregation,
             activity=cmip6_context.activity_id,
@@ -132,7 +132,7 @@ def get_simulations(context: DownClimContext) -> None:
         get_cordex(
             aois=context.aoi,
             variables=context.variable,
-            periods=context.projection_year,
+            periods=context.projection_period,
             institute=context.institute,
             model=context.model,
             experiment=context.experiment,

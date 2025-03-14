@@ -4,15 +4,20 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+import geopandas as gpd
 import xarray as xr
+import xesmf as xe
+
+from .aoi import get_aoi_informations
+from .dataset.cmip6 import get_cmip6_context_from_filename
+from .dataset.cordex import get_cordex_context_from_filename
+from .dataset.utils import Aggregation, DataProduct
 
 
 class DownscaleMethod(Enum):
     """Class to define the downscaling methods available."""
 
     BIAS_CORRECTION = "bias_correction"
-    QUANTILE_MAPPING = "quantile_mapping"
-    DYNAMICAL = "dynamical"
 
     @classmethod
     def _missing_(cls, value: Any) -> None:
@@ -20,198 +25,130 @@ class DownscaleMethod(Enum):
         raise ValueError(msg)
 
 
-def generate_dataset_names(
-    proj_file: str,
-    area: str,
-    project: str,
-    domain: str,
-    institute: str,
-    model: str,
-    experiment: str,
-    ensemble: str,
-    rcm: str,
-    downscaling: str,
-    baseline: str,
-    aggregation: str,
-    period: str,
-) -> str:
-    """Generate the dataset names for the projections.
-
-    Args:
-        proj_file (str): Future projections dataset.
-        area (str): Area name.
-        project (str): Project name.
-        domain (str): Domain name.
-        institute (str): Institute name.
-        model (str): Model name.
-        experiment (str): Experiment name.
-        ensemble (str): Ensemble name.
-        rcm (str): RCM name.
-        downscaling (str): Downscaling method.
-        baseline (str): Baseline product.
-        aggregation (str): Aggregation method.
-        period (str): Period.
-
-    Returns:
-        str: Dataset name as a netCDF file.
-    """
-    return f"{Path(proj_file).parent}/{area}_{project}_{domain}_{institute}_{model}_{experiment}_{ensemble}_{rcm}_{downscaling}_{baseline}_{aggregation}_{period}.nc"
-
-
-def open_datasets(
-    base_hist_file: str,
-    proj_file: str,
-    area: str,
-    project: str,
-    domain: str,
-    institute: str,
-    model: str,
-    experiment: str,
-    ensemble: str,
-    rcm: str,
-    downscaling: str,
-    baseline: str,
-    aggregation: str,
-    period_future: str,
-    period_hist: str,
-) -> tuple[xr.Dataset, xr.Dataset, xr.Dataset]:
-    """Open all the datasets for downscaling : baseline historical, historical projections and future projections.
-
-    Args:
-        base_hist_file (str): Baseline historical dataset filename.
-        proj_file (str): Future projections dataset filename.
-        area (str): Area name.
-        project (str): Project name.
-        domain (str): Domain name.
-        institute (str): Institute name.
-        model (str): Model name.
-        experiment (str): Experiment name.
-        ensemble (str): Ensemble name.
-        rcm (str): RCM name.
-        downscaling (str): Downscaling method.
-        baseline (str): Baseline product.
-        aggregation (str): Aggregation method.
-        period_future (str): Future period.
-        period_hist (str): Historical period
-
-    Returns:
-        tuple (xr.Dataset, xr.Dataset, xr.Dataset): baseline historical, historical projections and future projections datasets.
-    """
-
-    # open
-    proj_future_file = generate_dataset_names(
-        proj_file,
-        area,
-        project,
-        domain,
-        institute,
-        model,
-        experiment,
-        ensemble,
-        rcm,
-        downscaling,
-        baseline,
-        aggregation,
-        period_future,
-    )
-
-    proj_hist_file = generate_dataset_names(
-        proj_file,
-        area,
-        project,
-        domain,
-        institute,
-        model,
-        experiment,
-        ensemble,
-        rcm,
-        downscaling,
-        baseline,
-        aggregation,
-        period_hist,
-    )
-
-    return (
-        xr.open_mfdataset(base_hist_file, parallel=True),
-        xr.open_mfdataset(proj_hist_file, parallel=True),
-        xr.open_mfdataset(proj_future_file, parallel=True),
-    )
-
-
 def bias_correction(
-    base_hist: xr.Dataset, proj_hist: xr.Dataset, proj_future: xr.Dataset
+    baseline: xr.Dataset,
+    evaluation: xr.Dataset,
+    projection: xr.Dataset
 ) -> xr.Dataset:
     """Bias correction of the projections.
 
     Args:
-        base_hist (xr.Dataset): Baseline historical data.
-        proj_hist (xr.Dataset): Historical projections.
-        proj_future (xr.Dataset): Future projections.
+        baseline (xr.Dataset): Baseline period.
+        evaluation (xr.Dataset): Evaluation period.
+        projection (xr.Dataset): Projection period.
 
     Returns:
         xr.Dataset: Bias corrected projections.
     """
 
-    # Compute anomalies
-    anomalies = proj_future - proj_hist
-    # Add to the baseline
-    proj_ds = base_hist + anomalies
-    if "pr" in proj_future:
-        anomalies_rel = (proj_future - proj_hist) / (proj_hist + 1)
+    # Compute anomalies between projection and evaluation
+    anomalies = projection - evaluation
+    # Add anomalies to the baseline
+    projection = baseline + anomalies
+    if "pr" in projection:
+        anomalies_rel = (projection - evaluation) / (evaluation + 1)
         anomalies["pr"] = anomalies_rel["pr"]
-        proj_ds = base_hist * (1 + anomalies)
+        projection = baseline * (1 + anomalies)
 
-    return proj_ds
+    return projection
 
 
-def downscale(
-    method: DownscaleMethod,
-    proj_file: str,
-    base_hist_file: str,
-    area: str,
-    project: str,
-    domain: str,
-    institute: str,
-    model: str,
-    experiment: str,
-    ensemble: str,
-    rcm: str,
-    downscaling: str,
-    baseline: str,
-    aggregation: str,
-    period_future: str,
-    period_hist: str,
+def run_downscaling(
+    aoi: list[gpd.GeoDataFrame],
+    baseline_period: tuple[int, int],
+    evaluation_period: tuple[int, int],
+    projection_period: tuple[int, int],
+    baseline_product: DataProduct,
+    cmip6_simulations_to_downscale: list[str] | None,
+    cordex_simulations_to_downscale: list[str] | None,
+    reference_grid_file: str | None = None,
+    aggregation: Aggregation = Aggregation.MONTHLY_MEAN,
+    method: DownscaleMethod = DownscaleMethod.BIAS_CORRECTION,
+    input_dir: str = "./results",
+    output_dir: str = "./results/downscaled",
 ) -> None:
-    base_hist, proj_hist, proj_future = open_datasets(
-        base_hist_file,
-        proj_file,
-        area,
-        project,
-        domain,
-        institute,
-        model,
-        experiment,
-        ensemble,
-        rcm,
-        downscaling,
-        baseline,
-        aggregation,
-        period_future,
-        period_hist,
-    )
 
-    if method == DownscaleMethod.BIAS_CORRECTION:
-        proj_ds = bias_correction(base_hist, proj_hist, proj_future)
+    # Create output directory
+    if output_dir is None:
+        output_dir = "./results/downscaled/"
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
+    if cmip6_simulations_to_downscale is None or cmip6_simulations_to_downscale == []:
+        msg = "No CMIP6 simulations to downscale provided."
+        print(msg)
     else:
-        msg = "Method not implemented yet, only bias_correction is available."
-        raise ValueError(msg)
+        Path(f"{output_dir}/cmip6").mkdir(parents=True, exist_ok=True)
+    if cordex_simulations_to_downscale is None or cordex_simulations_to_downscale == []:
+        msg = "No CORDEX simulations to downscale provided."
+        print(msg)
+    else:
+        Path(f"{output_dir}/cordex").mkdir(parents=True, exist_ok=True)
 
-    reference_file = f"{period_reference_output}/{aoi_n}_{period_reference_product.product_name}_{aggregation.value}_{period[0]}-{period[1]}.nc"
-    reference = xr.open_dataset(reference_file[0])
-    # regridder = xe.Regridder(ds, reference, "bilinear")
-    # ds_r = regridder(ds, keep_attrs=True)
+    # Get AOIs information
+    aoi_name, _ = get_aoi_informations(aoi)
 
-    # prep and write
-    proj_ds.to_netcdf(
-        f"{Path(proj_file).parent}/{area}_{project}_{domain}_{institute}_{model}_{experiment}_{ensemble}_{rcm}_{downscaling}_{baseline}_{aggregation}_{period_future}_{period_hist}_bc.nc"
-    )
+    # Get the reference grid
+    reference_grid = xr.open_dataset(reference_grid_file)
+
+    for aoi_n in aoi_name:
+        # Get baseline historical data and interpolate on reference grid
+        baseline_file = f"{input_dir}/{baseline_product.product_name}/{aoi_n}_{baseline_product.product_name}_{aggregation.value}_{baseline_period[0]}-{baseline_period[1]}.nc"
+        if not Path(baseline_file).is_file():
+            msg = f"Baseline historical data not found for {aoi_n}. Please download it first."
+            raise FileNotFoundError(msg)
+        ds_baseline = xr.open_dataset(baseline_file)
+        regridder = xe.Regridder(ds_baseline, reference_grid, "bilinear")
+        ds_baseline_reggrided = regridder(ds_baseline, keep_attrs=True)
+
+        # Get evaluation data
+        cmip6_aoi_evaluation = {k:v
+            for k,v in {file:get_cmip6_context_from_filename(file) for file in cmip6_simulations_to_downscale}.items()
+            if aoi_n == v["aoi_n"] and evaluation_period[0] == int(v["tmin"][:4]) and evaluation_period[1] == int(v["tmax"][:4])
+        }
+        cordex_aoi_evaluation = {k:v
+            for k,v in {file:get_cordex_context_from_filename(file) for file in cordex_simulations_to_downscale}.items()
+            if aoi_n == v["aoi_n"] and evaluation_period[0] == int(v["tmin"][:4]) and evaluation_period[1] == int(v["tmax"][:4])
+        }
+
+        # Get projections data
+        cmip6_aoi_projection = {k:v
+            for k,v in {file:get_cmip6_context_from_filename(file) for file in cmip6_simulations_to_downscale}.items()
+            if aoi_n == v["aoi_n"] and projection_period[0] == int(v["tmin"][:4]) and projection_period[1] == int(v["tmax"][:4])
+        }
+        cordex_aoi_projection = {k:v
+            for k,v in {file:get_cordex_context_from_filename(file) for file in cordex_simulations_to_downscale}.items()
+            if aoi_n == v["aoi_n"] and projection_period[0] == int(v["tmin"][:4]) and projection_period[1] == int(v["tmax"][:4])
+        }
+
+        for k,v in {**cmip6_aoi_evaluation, **cordex_aoi_evaluation}.items():
+            # Open evaluation and projection datasets
+            ds_evaluation = xr.open_dataset(k)
+            if v["data_product"] == DataProduct.CMIP6.product_name:
+                ds_projection_file = [f for f,d in cmip6_aoi_projection.items()
+                                      if d["institute"] == v["institute"] and d["source"] == v["source"] and d["ensemble"] == v["ensemble"]
+                                    ]
+            else:
+                ds_projection_file = [f for f,d in cordex_aoi_projection.items()
+                                      if d["domain"] == v["domain"] and
+                                      d["driving_model"] == v["driving_model"] and
+                                      d["rcm_name"] == v["rcm_name"] and
+                                      d["ensemble"] == v["ensemble"] and
+                                      d["rcm_version"] == v["rcm_version"]
+                                    ]
+            ds_projection = xr.open_dataset(ds_projection_file[0])
+
+            # Interpolate the data onto reference grid
+            regridder = xe.Regridder(ds_evaluation, reference_grid, "bilinear")
+            ds_evaluation_reggrided = regridder(ds_evaluation, keep_attrs=True)
+            ds_projection_reggrided = regridder(ds_projection, keep_attrs=True)
+
+            # Downscale
+            if method == DownscaleMethod.BIAS_CORRECTION:
+                ds_projection_downscaled = bias_correction(ds_baseline_reggrided, ds_evaluation_reggrided, ds_projection_reggrided)
+            else:
+                msg = "Method not implemented yet, only bias_correction is available."
+                raise ValueError(msg)
+
+            # prep and write
+            ds_projection_downscaled.to_netcdf(
+                f"{output_dir}/{Path(k).stem}_downscaled.nc"
+            )

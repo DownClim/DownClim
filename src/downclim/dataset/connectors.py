@@ -34,8 +34,16 @@ def connect_to_ee(**kwargs: dict[str, Any]) -> None:
         Keyword arguments to pass to `ee.Initialize()`.
     """
     if not ee.data._credentials:
-        ee.Initialize(opt_url=data_urls["ee"], **kwargs)
-
+        print("""You are not logged in to Earth Engine.
+              Authenticating to Earth Engine...""")
+        try:
+            ee.Initialize(opt_url='https://earthengine-highvolume.googleapis.com', **kwargs)
+            print("Successfully connected to Earth Engine.")
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            print("Please provide a 'project' when connecting to Earth Engine.")
+    else:
+        print(f"Already connected to Earth Engine with project '{ee.data.getProjectConfig()['name'].split('/')[1]}'.")
 
 def connect_to_gcfs(token: str = "anon") -> gcsfs.GCSFileSystem:
     """

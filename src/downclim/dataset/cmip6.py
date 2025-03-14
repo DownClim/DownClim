@@ -13,10 +13,16 @@ import xarray as xr
 import xesmf as xe
 from pydantic import BaseModel, Field, field_validator
 
-from .aoi import get_aoi_informations
+from ..aoi import get_aoi_informations
 from .connectors import connect_to_gcfs
-from .utils import (Aggregation, DataProduct, Frequency,
-                    get_monthly_climatology, prep_dataset, split_period)
+from .utils import (
+    Aggregation,
+    DataProduct,
+    Frequency,
+    get_monthly_climatology,
+    prep_dataset,
+    split_period,
+)
 
 
 class CMIP6Context(BaseModel):
@@ -118,7 +124,6 @@ class CMIP6Context(BaseModel):
             return [*v, "historical"]
         return v
 
-
 @lru_cache
 def _get_cmip6_catalog(
     url: str,
@@ -137,6 +142,50 @@ def _get_cmip6_catalog(
         CMIP6 catalog.
     """
     return pd.read_csv(url)
+
+def get_filename_from_cmip6_context(
+    output_dir: str,
+    aoi_n: str,
+    data_product: DataProduct,
+    institute: str,
+    source: str,
+    experiment: str,
+    ensemble: str,
+    aggregation: Aggregation,
+    tmin: int,
+    tmax: int,
+) -> str:
+    """Get the name of the output file for the simulation."""
+    return f"{output_dir}/{aoi_n}_{data_product.product_name}_{institute}_{source}_{experiment}_{ensemble}_{aggregation.value}_{tmin}_{tmax}.nc"
+
+
+def get_cmip6_context_from_filename(filename: str) -> dict[str, str]:
+    """Get CMIP6 context from a filename.
+
+    Parameters
+    ----------
+    filename: str
+        Filename containing CMIP6 context of the simulation.
+
+    Returns
+    -------
+    dict[str, str]
+        List of main CMIP6 context information, including:
+            - output_dir
+            - aoi_n
+            - data_product name
+            - institute
+            - source
+            - experiment
+            - ensemble
+            - aggregation
+            - tmin
+            - tmax
+
+    """
+    context_items = ["output_dir", "aoi_n", "data_product", "institute", "source", "experiment", "ensemble", "aggregation", "tmin", "tmax"]
+    context_elements = [str(Path(filename).parent), *Path(filename).name.split(".nc")[0].split("_")]
+    return dict(zip(context_items, context_elements, strict=False))
 
 
 def list_available_cmip6_simulations(
@@ -267,11 +316,11 @@ def inspect_cmip6(
 def get_cmip6_from_list(
     aoi: list[gpd.GeoDataFrame],
     cmip6_simulations: pd.DataFrame,
-    baseline_year: tuple[int, int] = (1980, 2005),
-    evaluation_year: tuple[int, int] = (2006, 2019),
-    projection_year: tuple[int, int] = (2071, 2100),
+    baseline_period: tuple[int, int] = (1980, 2005),
+    evaluation_period: tuple[int, int] = (2006, 2019),
+    projection_period: tuple[int, int] = (2071, 2100),
     aggregation: Aggregation = Aggregation.MONTHLY_MEAN,
-    output_dir: str = "./results/cmip6",
+    output_dir: str | None = None,
     chunks: dict[str, int] | None = None,
 ) -> None:
     """
@@ -289,11 +338,15 @@ def get_cmip6_from_list(
         DataFrame containing the CMIP6 simulations to retrieve.
     """
 
+    data_product = DataProduct.CMIP6
+
     # Default values of chunks
     if chunks is None:
         chunks = {"time": 100, "lat": 400, "lon": 400}
 
     # Create output directory
+    if output_dir is None:
+        output_dir = f"./results/{data_product.product_name}"
     Path(output_dir).mkdir(parents=True, exist_ok=True)
 
     # Get AOIs information
@@ -326,14 +379,14 @@ def get_cmip6_from_list(
         )
 
     # Define time periods
-    periods_years = [baseline_year, evaluation_year, projection_year]
+    periods_years = [baseline_period, evaluation_period, projection_period]
     periods_names = ["baseline", "evaluation", "projection"]
 
     for period_year, period_name in zip(periods_years, periods_names, strict=False):
         tmin, tmax = split_period(period_year)
         for aoi_n, aoi_b in zip(aois_names, aois_bounds, strict=False):
-            print(f"""Extracting CMIP6 data for {period_name}, years {tmin} to {tmax},
-                  for the area of interest {aoi_n}.""")
+            print(f"""Extracting CMIP6 data for {period_name} period, years {tmin} to {tmax},
+                  for the area of interest '{aoi_n}'.""")
             # Extend the AOI to avoid edge effects
             aoi_b["minx"] -= 2
             aoi_b["miny"] -= 2
@@ -350,7 +403,10 @@ def get_cmip6_from_list(
                     msg = "Currently only monthly-means aggregation available!"
                     raise ValueError(msg)
                 ds_clim = get_monthly_climatology(ds_aoi)
-                output_file = f"{output_dir}/{aoi_n}_CMIP6_global_{institute}_{source}_{experiment}_{ensemble}_{aggregation.value}_{tmin}_{tmax}.nc"
+                output_file = get_filename_from_cmip6_context(
+                    output_dir, aoi_n, data_product, institute, source, experiment, ensemble, aggregation, tmin, tmax
+                )
+                #output_file = f"{output_dir}/{aoi_n}_CMIP6_global_{institute}_{source}_{experiment}_{ensemble}_{aggregation.value}_{tmin}_{tmax}.nc"
                 ds_clim.to_netcdf(output_file)
 
 
@@ -362,9 +418,9 @@ def get_cmip6_from_list(
 def get_cmip6(
     aoi: Iterable[gpd.GeoDataFrame],
     variable: Iterable[str] = ("pr", "tas", "tasmin", "tasmax"),
-    baseline_year: tuple[int, int] = (1980, 2005),
-    evaluation_year: tuple[int, int] = (2006, 2019),
-    projection_year: tuple[int, int] = (2071, 2100),
+    baseline_period: tuple[int, int] = (1980, 2005),
+    evaluation_period: tuple[int, int] = (2006, 2019),
+    projection_period: tuple[int, int] = (2071, 2100),
     time_frequency: Frequency = Frequency.MONTHLY,
     aggregation: Aggregation = Aggregation.MONTHLY_MEAN,
     activity: str | Iterable[str] = ("ScenarioMIP", "CMIP"),
@@ -454,7 +510,7 @@ def get_cmip6(
 
     dminsmaxs = [
         split_period(period)
-        for period in [baseline_year, evaluation_year, projection_year]
+        for period in [baseline_period, evaluation_period, projection_period]
     ]
     dmin = min(dminsmaxs, key=lambda x: x[0])[0]
     dmax = max(dminsmaxs, key=lambda x: x[1])[1]
@@ -462,7 +518,7 @@ def get_cmip6(
     ds = ds.chunk(chunks=chunks)
     ds = prep_dataset(ds, "cmip6")
 
-    for i, period in enumerate([baseline_year, evaluation_year, projection_year]):
+    for i, period in enumerate([baseline_period, evaluation_period, projection_period]):
         dmin, dmax = dminsmaxs[i]
         ds_clim = get_monthly_climatology(ds.sel(time=slice(dmin, dmax)))
         for aoi_n in aoi_name:

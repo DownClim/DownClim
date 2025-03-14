@@ -42,7 +42,7 @@ class Aggregation(MultiValueEnum):
         ValueError: if the aggregation method is not implemented.
     """
 
-    MONTHLY_MEAN = "monthly_mean", "monthly-mean", "monthly_means", "monthly-means"
+    MONTHLY_MEAN = "monthly-mean", "monthly_mean", "monthly_means", "monthly-means"
 
     @classmethod
     def _missing_(cls, value: Any) -> None:
@@ -159,7 +159,6 @@ class VariableAttributes(VariableAttributesDescription, Enum):
         "Potential evapotranspiration for each month; calculated with the Penman-Monteith equation.",
     )
 
-
 def split_period(period: tuple[int, int]) -> tuple[str, str]:
     """
     Split a period string into two dates to define dmin and dmax.
@@ -201,11 +200,13 @@ def prep_dataset(ds: xr.Dataset, dataset_type: DataProduct) -> xr.Dataset:
     cf = not isinstance(ds["time"].to_numpy()[0], np.datetime64)
     if cf:  # only cftime if not dt but should include more cases
         ds["time"] = [*map(convert_cf_to_dt, ds.time.values)]
-    for key in ds:
-        ds[key] = (
-            ds[key] * dataset_type.scale_factor[key] + dataset_type.add_offset[key]
-        )
-        ds[key].attrs = asdict(VariableAttributes[key].value)
+    for key in ds.keys():
+        try:
+            ds[key] = ds[key] * dataset_type.scale_factor[key] + dataset_type.add_offset[key]
+            ds[key].attrs = asdict(VariableAttributes[key].value)
+        except KeyError as error:
+            msg = f"Can't find scale factor and/or offset for variable {key} in dataset {dataset_type.product_name}."
+            raise KeyError(msg) from error
     return ds
 
 
@@ -223,7 +224,7 @@ def get_monthly_mean(ds: xr.Dataset) -> xr.Dataset:
     xr.Dataset
         Dataset with average monthly means values.
     """
-    return ds.resample(time="1M").mean()
+    return ds.resample(time="1ME").mean()
 
 
 def get_monthly_climatology(ds: xr.Dataset) -> xr.Dataset:

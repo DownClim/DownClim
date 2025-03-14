@@ -11,11 +11,11 @@ import yaml
 from importlib_resources import files
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
-from .dataset.aoi import get_aoi
+from .aoi import get_aoi
 from .dataset.cmip6 import CMIP6Context
 from .dataset.cordex import CORDEXContext
 from .dataset.utils import Aggregation, DataProduct, Frequency
-from .downscale import DownscaleMethod
+from .downscale import DownscaleMethod, run_downscaling
 
 
 class DownClimContext(BaseModel):
@@ -79,17 +79,17 @@ class DownClimContext(BaseModel):
         example=CMIP6Context(),
         description="CMIP6Context object to use for defining the CMIP6 data required.",
     )
-    baseline_year: tuple[int, int] = Field(
+    baseline_period: tuple[int, int] = Field(
         default=(1980, 2005),
         example=(1980, 2005),
         description="Interval of years to use for the baseline period.",
     )
-    evaluation_year: tuple[int, int] = Field(
+    evaluation_period: tuple[int, int] = Field(
         default=(2006, 2019),
         example=(2006, 2019),
         description="Interval of years to use for the evaluation period.",
     )
-    projection_year: tuple[int, int] = Field(
+    projection_period: tuple[int, int] = Field(
         default=(2071, 2100),
         example=(2071, 2100),
         description="Interval of years to use for the projection period.",
@@ -122,6 +122,14 @@ class DownClimContext(BaseModel):
     keep_tmp_dir: bool = Field(
         default=False,
         description="Whether to keep the temporary directory after the process.",
+    )
+    cmip6_simulations_to_downscale: list[str] | None = Field(
+        default=None,
+        description="List of paths to downloaded CMIP6 simulations available locally. This list is used to determine which simulation can be downscaled.",
+    )
+    cordex_simulations_to_downscale: list[str] | None = Field(
+        default=None,
+        description="List of paths to downloaded CORDEX simulations available locally. This list is used to determine which simulation can be downscaled.",
     )
     esgf_credentials: dict[str, str] | None = Field(
         default=None,
@@ -273,9 +281,9 @@ class DownClimContext(BaseModel):
                 v = CMIP6Context.model_validate(v)
         return v
 
-    @field_validator("baseline_year", mode="after")
+    @field_validator("baseline_period", mode="after")
     @classmethod
-    def check_baseline_years(
+    def check_baseline_periods(
         cls, v: tuple[int, int], info: ValidationInfo
     ) -> tuple[int, int]:
         period = info.data["baseline_product"].period
@@ -285,9 +293,9 @@ class DownClimContext(BaseModel):
             raise ValueError(msg)
         return v
 
-    @field_validator("evaluation_year", mode="after")
+    @field_validator("evaluation_period", mode="after")
     @classmethod
-    def check_evaluation_years(
+    def check_evaluation_periods(
         cls, v: tuple[int, int], info: ValidationInfo
     ) -> tuple[int, int]:
         for evaluation_product in info.data["evaluation_product"]:
@@ -298,9 +306,9 @@ class DownClimContext(BaseModel):
                 raise ValueError(msg)
         return v
 
-    @field_validator("projection_year", mode="after")
+    @field_validator("projection_period", mode="after")
     @classmethod
-    def check_projection_years(cls, v: tuple[int, int]) -> tuple[int, int]:
+    def check_projection_periods(cls, v: tuple[int, int]) -> tuple[int, int]:
         if v[0] <= 2015:
             msg = """Beginning of projection period must start in 2015 or after.
             This corresponds to the first year of the CMIP6 / CORDEX scenarios."""
@@ -355,6 +363,23 @@ class DownClimContext(BaseModel):
         msg = "ESGF credentials must be a dictionary, a path to a yaml file or None."
         raise ValueError(msg)
 
+    def downscale(self) -> None:
+        """Runs the downscaling process with the current context."""
+        run_downscaling(
+            aoi=self.aoi,
+            variable=self.variable,
+            baseline_period=self.baseline_period,
+            evaluation_period=self.evaluation_period,
+            projection_period=self.projection_period,
+            baseline_product=self.baseline_product,
+            method=self.downscaling_method,
+            use_cmip6=self.use_cmip6,
+            use_cordex=self.use_cordex,
+            cordex_context=self.cordex_context,
+            cmip6_context=self.cmip6_context,
+            intput_dir=self.output_dir,
+            output_dir=f"{self.output_dir}/downscaled",
+        )
 
 def generate_DownClimContext_template_file(output_file: str) -> None:
     """Generates a template file for DownClimContext.
@@ -393,7 +418,7 @@ def define_DownClimContext_from_file(file: str) -> DownClimContext:
         msg = "Mandatory field 'aoi' is not present in the yaml file."
         raise ValueError(msg)
 
-    keys_years = ["baseline_year", "evaluation_year", "projection_year"]
+    keys_years = ["baseline_period", "evaluation_period", "projection_period"]
     for key in keys_years:
         if key in config:
             config[key] = tuple(

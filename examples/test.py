@@ -2,23 +2,34 @@
 # %autoreload 2
 from __future__ import annotations
 
-from downclim.dataset.aoi import get_aoi, get_aoi_informations
+import ee
+
+from downclim.aoi import get_aoi, get_aoi_informations
 from downclim.dataset.chelsa2 import get_chelsa2
 from downclim.dataset.chirps import get_chirps
-from downclim.dataset.cmip6 import (CMIP6Context, get_cmip6_from_list,
-                                    list_available_cmip6_simulations)
-from downclim.dataset.cordex import (CORDEXContext, get_cordex_from_list,
-                                     get_download_scripts,
-                                     list_available_cordex_simulations)
+from downclim.dataset.cmip6 import (
+                                    CMIP6Context,
+                                    get_cmip6_from_list,
+                                    list_available_cmip6_simulations,
+)
+from downclim.dataset.cordex import (
+                                    CORDEXContext,
+                                    get_cordex_from_list,
+                                    list_available_cordex_simulations,
+)
 from downclim.dataset.gshtd import get_gshtd
 from downclim.downclim import DownClimContext
 from downclim.getters import get_baseline_product
 
+# ee connection
+ee.Authenticate(force=True)
+ee.Initialize(opt_url="https://earthengine-highvolume.googleapis.com", project="downclim")
+
 # Get AOI
 aoi1 = get_aoi("Vanuatu")
 aoi2 = get_aoi((10, 10, 20, 20, "box"))
-aoi = [aoi1, aoi2]
-aoi_name, aoi_bound = get_aoi_informations(aoi)
+aois = [aoi1, aoi2]
+aois_names, aois_bounds = get_aoi_informations(aois)
 
 # Get CHELSA data
 get_chelsa2(
@@ -32,6 +43,7 @@ get_chelsa2(
 get_chirps(
     aoi=[aoi1, aoi2],
     period=(1981, 1982),
+    project = "downclim", # project name for Earth Engine
 )
 
 # Get GSHTD data
@@ -39,31 +51,16 @@ get_chirps(
 get_gshtd(
     aoi=[aoi1, aoi2],
     variable=["tas", "tasmin", "tasmax"],
-    period=(2001, 2002),
-)
-
-# Get CMIP6 data
-get_cmip6(
-    aoi=[aoi1, aoi2],
-    variable=["pr", "tas", "tasmin", "tasmax"],
-    baseline_year=(1980, 1981),
-    evaluation_year=(2006, 2007),
-    projection_year=(2071, 2072),
-    institution="IPSL",
-    source="IPSL-CM6A-LR",
-    experiment="ssp126",
-    member="r1i1p1f1",
-    grid_label="gn",
-    baseline="chelsa2",
+    period=(2006, 2007),
 )
 
 # Define Downclim context
 downclim_context = DownClimContext(
     aoi=["Vanuatu", (30, 30, 40, 40, "box")],
     variable=["pr", "tas", "tasmin", "tasmax"],
-    baseline_year=(1980, 1981),
-    evaluation_year=(2006, 2007),
-    projection_year=(2071, 2072),
+    baseline_period=(1980, 1981),
+    evaluation_period=(2006, 2007),
+    projection_period=(2071, 2072),
     time_frequency="mon",
     downscaling_aggregation="monthly_mean",
     baseline_product="chelsa2",
@@ -81,20 +78,18 @@ cordex_context = CORDEXContext(
 cordex_simulations = list_available_cordex_simulations(
     cordex_context, esgf_credential="config/esgf_credential.yaml"
 )
-
-cordex_simulations = get_download_scripts(
-    cordex_simulations, esgf_credential="config/esgf_credential.yaml"
-)
+cordex_simulations.to_csv("results/cordex/cordex_simulations.csv")
 
 get_cordex_from_list(
-    aoi=aoi,
+    aoi=aois,
     cordex_simulations=cordex_simulations,
-    baseline_year=(1980, 1981),
-    evaluation_year=(2006, 2007),
-    projection_year=(2071, 2072),
+    baseline_period=(1980, 1981),
+    evaluation_period=(2006, 2007),
+    projection_period=(2071, 2072),
     output_dir="./results/cordex",
     tmp_dir = "./results/tmp/cordex",
-    keep_tmp_dir = True
+    keep_tmp_dir = True,
+    esgf_credential="config/esgf_credential.yaml"
 )
 
 # Get CMIP6 simulations
@@ -108,13 +103,14 @@ cmip6_context = CMIP6Context(
     grid_label="gn",
 )
 cmip6_simulations = list_available_cmip6_simulations(cmip6_context)
+cmip6_simulations.to_csv("results/cmip6/cmip6_simulations.csv")
 
 get_cmip6_from_list(
-    aoi=aoi,
+    aoi=aois,
     cmip6_simulations=cmip6_simulations,
-    baseline_year=(1980, 1981),
-    evaluation_year=(2006, 2007),
-    projection_year=(2071, 2072),
+    baseline_period=(1980, 1981),
+    evaluation_period=(2006, 2007),
+    projection_period=(2071, 2072),
     output_dir="./results/cmip6",
 )
 

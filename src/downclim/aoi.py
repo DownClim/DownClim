@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from pathlib import Path
 
 import geopandas as gpd
@@ -9,7 +10,7 @@ import pygadm
 
 
 def get_aoi_informations(
-    aoi: list[gpd.GeoDataFrame],
+    aoi: Iterable[gpd.GeoDataFrame],
 ) -> tuple[list[str], list[tuple[float, float, float, float]]]:
     """Retrieve the names and bounds of a list of areas of interest defined by GeoDataFrame.
 

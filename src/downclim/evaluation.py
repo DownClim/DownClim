@@ -3,11 +3,13 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-import geopandas as gp
+import geopandas as gpd
 import numpy as np
 import pandas as pd
 import xarray as xr
 import xesmf as xe
+
+from .downclim.dataset.aoi import get_aoi_informations
 
 
 def get_hist(
@@ -224,28 +226,37 @@ def run_hist(
 
 
 def run_eval(
-    ds_file: str,
-    base_file: str,
-    area_file: str,
+    aoi: gpd.GeoDataFrame,
+    variables: list[str],
+    input_directory: str,
+    output_directory: str,
+    downscaled_projection_file: str,
+    baseline_file: str,
     parameters: dict(any, any),
     save_file: str | None = None,
 ) -> pd.DataFrame:
     """Run the evaluation of the projections.
 
     Args:
-        ds_file (str): File with the downscaled data.
-        base_file (str): File with the baseline data.
-        area_file (str): File with the area.
+        downscaled_projection_file (str): File with the downscaled data.
+        baseline_file (str): File with the baseline data.
         parameters (dict): Parameters of the simulation to evaluate.
         save_file (str): File to save the evaluation.
 
     Returns:
         pd.DataFrame: Dataframe with the evaluation.
     """
+    # Get AOIs information
+    aois_names, aois_bounds = get_aoi_informations(aoi)
+
+    for aoi_n, aoi_b in zip(aois_names, aois_bounds, strict=False):
+        ds = xr.open_dataset(downscaled_projection_file).rio.clip(aoi.geometry.values)
+
+
 
     proj_file = f"results/projections/{parameters.area}_{parameters.origin}_{parameters.domain}_{parameters.institute}_{parameters.model}_{parameters.parameters.experiment}_{parameters.ensemble}_{parameters.rcm}_{parameters.downscaling}_{parameters.baseline}_{parameters.aggregation}_{parameters.period_eval}.nc"
-    area_shp = gp.read_file(area_file)
-    ds = xr.open_dataset(ds_file).rio.clip(area_shp.geometry.values, area_shp.crs)
+
+
     proj = xr.open_dataset(proj_file).rio.clip(area_shp.geometry.values, area_shp.crs)
     base = xr.open_dataset(base_file).rio.clip(area_shp.geometry.values, area_shp.crs)
     out_file = pd.concat(

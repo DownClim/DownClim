@@ -3,7 +3,7 @@ config:
   time_frequency: "mon"
   variables: ["tas", "tasmin", "tasmax", "pr"]
   baseline: "chelsa2"
-  baseline_years: "1980-2018" # 2019 is available for all except pr !!!
+  baseline_periods: "1980-2018" # 2019 is available for all except pr !!!
   chunks: { "time": 1, "lat": 1000, "lon": 1000 }
 
 resources:
