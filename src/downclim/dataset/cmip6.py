@@ -114,15 +114,56 @@ class CMIP6Context(BaseModel):
 
     @field_validator("experiment", mode="before")
     @classmethod
-    def validate_experiment_id(cls, v: str | list[str] | None) -> list[str]:
+    def validate_experiment_id(cls, v: str | Iterable[str] | None) -> list[str]:
+        if not v:
+            v = []
+        if isinstance(v, str):
+            v = [v]
         if not any(exp == "historical" for exp in v):
             msg = """Historical experiment is mandatory to associate with projections.
                 By default we add 'historical' to the list of experiments."""
             warnings.warn(msg, stacklevel=2)
-            if isinstance(v, str):
-                return [v, "historical"]
             return [*v, "historical"]
-        return v
+        return list(v)
+
+    def list_available_simulations(
+        self,
+        cmip6_catalog_url: str = DataProduct.CMIP6.url
+    ) -> pd.DataFrame:
+        """List all available CMIP6 simulations available on Google Cloud Storage for a given set of context.
+
+        Parameters
+        ----------
+        cmip6_catalog_url: str (default: DataProduct.CMIP6.url)
+            URL to the CMIP6 catalog on the Google Cloud File System.
+
+        Returns:
+        -------
+        pd.DataFrame: DataFrame containing information about the available datasets matching
+        """
+
+        context = self.model_dump()
+        # gcfs connection
+        # gcfs_connector = connect_to_gcfs()
+        # list CMIP6 datasets matching context
+        cmip6_simulations = inspect_cmip6(context, cmip6_catalog_url)
+        cmip6_simulations = cmip6_simulations.assign(domain="GLOBAL")
+        cmip6_simulations = cmip6_simulations.assign(product="output")
+
+        # filter simulations that don't have all variables requested
+        cmip6_simulations = cmip6_simulations.groupby(
+            ["source", "experiment", "ensemble"]
+        ).filter(lambda x: set(context["variable"]) == (set(x["variable"])))
+        # filter simulations that don't have both historical & projection
+        cmip6_simulations = cmip6_simulations.groupby(["source", "ensemble"]).filter(
+            lambda x: set(context["experiment"]).issubset(set(x["experiment"]))
+        )
+        if cmip6_simulations.empty:
+            msg = "No CMIP6 simulations found for the given context."
+            warnings.warn(msg, stacklevel=1)
+            return cmip6_simulations
+        return cmip6_simulations.reset_index().drop("index", axis=1)
+
 
 @lru_cache
 def _get_cmip6_catalog(
@@ -143,7 +184,7 @@ def _get_cmip6_catalog(
     """
     return pd.read_csv(url)
 
-def get_filename_from_cmip6_context(
+def _get_filename_from_cmip6_context(
     output_dir: str,
     aoi_n: str,
     data_product: DataProduct,
@@ -155,12 +196,12 @@ def get_filename_from_cmip6_context(
     tmin: int,
     tmax: int,
 ) -> str:
-    """Get the name of the output file for the simulation."""
+    """Internal function. Get the name of the output file given a search context."""
     return f"{output_dir}/{aoi_n}_{data_product.product_name}_{institute}_{source}_{experiment}_{ensemble}_{aggregation.value}_{tmin}_{tmax}.nc"
 
 
 def get_cmip6_context_from_filename(filename: str) -> dict[str, str]:
-    """Get CMIP6 context from a filename.
+    """Get CMIP6 context given a simulation filename.
 
     Parameters
     ----------
@@ -186,63 +227,6 @@ def get_cmip6_context_from_filename(filename: str) -> dict[str, str]:
     context_items = ["output_dir", "aoi_n", "data_product", "institute", "source", "experiment", "ensemble", "aggregation", "tmin", "tmax"]
     context_elements = [str(Path(filename).parent), *Path(filename).name.split(".nc")[0].split("_")]
     return dict(zip(context_items, context_elements, strict=False))
-
-
-def list_available_cmip6_simulations(
-    context: dict[str, str | Iterable[str]] | CMIP6Context,
-    cmip6_catalog_url: str = DataProduct.CMIP6.url
-) -> pd.DataFrame:
-    """List all available CMIP6 simulations available on Google Cloud Storage for a given set of context.
-
-    Parameters
-    ----------
-        context (dict[str, str | Iterable[str]] | CMIP6Context):
-            Object containing information about the query on the CMIP6 dataset. Entries of the dictionary can be
-            either `str` or `Iterables` (e.g. `list`) if multiple values are provides.
-
-            These following keys are available. None are mandatory):
-                - activity_id: str, e.g "ScenarioMIP", "CMIP"
-                - institution_id: str, e.g "IPSL", "NCAR"
-                - source_id: str, e.g "IPSL-CM6A-LR", "CMCC-CM2-HR4"
-                - experiment_id: str, e.g "ssp126", "historical"
-                - member_id: str, e.g "r1i1p1f1"
-                - table_id: str, e.g "Amon", "day"
-                - variable_id: str, e.g "tas", "pr"
-                - grid_label: str, e.g "gn", "gr"
-                - zstore: str, e.g "gs://cmip6/CMIP6/ScenarioMIP/IPSL/IPSL-CM6A-LR/ssp126/r1i1p1f1/Amon/tas/gr/v20190903"
-                - dcpp_init_year: str, e.g "1850", "2015"
-                - version: str, e.g "20190903"
-
-        cmip6_catalog_url: str (default: DataProduct.CMIP6.url)
-            URL to the CMIP6 catalog on the Google Cloud File System.
-
-    Returns:
-    -------
-        pd.DataFrame: DataFrame containing information about the available datasets matching
-    """
-
-    if isinstance(context, CMIP6Context):
-        context = context.model_dump()
-    # gcfs connection
-    # gcfs_connector = connect_to_gcfs()
-    # list CMIP6 datasets matching context
-    cmip6_simulations = inspect_cmip6(context, cmip6_catalog_url)
-    cmip6_simulations = cmip6_simulations.assign(domain="GLOBAL")
-    cmip6_simulations = cmip6_simulations.assign(product="output")
-
-    # filter simulations that don't have all variables requested
-    cmip6_simulations = cmip6_simulations.groupby(
-        ["source", "experiment", "ensemble"]
-    ).filter(lambda x: set(context["variable"]) == (set(x["variable"])))
-    # filter simulations that don't have both historical & projection
-    cmip6_simulations = cmip6_simulations.groupby(["source", "ensemble"]).filter(
-        lambda x: set(context["experiment"]).issubset(set(x["experiment"]))
-    )
-    if cmip6_simulations.empty:
-        msg = "No CMIP6 simulations found for the given context."
-        warnings.warn(msg, stacklevel=1)
-        return cmip6_simulations
-    return cmip6_simulations.reset_index().drop("index", axis=1)
 
 
 def inspect_cmip6(
@@ -313,7 +297,7 @@ def inspect_cmip6(
     return cmip6_catalog.query(search_string).rename(columns=inverse_cmip6_name_mapping)
 
 
-def get_cmip6_from_list(
+def get_cmip6(
     aoi: list[gpd.GeoDataFrame],
     cmip6_simulations: pd.DataFrame,
     baseline_period: tuple[int, int] = (1980, 2005),
@@ -403,7 +387,7 @@ def get_cmip6_from_list(
                     msg = "Currently only monthly-means aggregation available!"
                     raise ValueError(msg)
                 ds_clim = get_monthly_climatology(ds_aoi)
-                output_file = get_filename_from_cmip6_context(
+                output_file = _get_filename_from_cmip6_context(
                     output_dir, aoi_n, data_product, institute, source, experiment, ensemble, aggregation, tmin, tmax
                 )
                 #output_file = f"{output_dir}/{aoi_n}_CMIP6_global_{institute}_{source}_{experiment}_{ensemble}_{aggregation.value}_{tmin}_{tmax}.nc"
@@ -415,7 +399,7 @@ def get_cmip6_from_list(
 ############################################################################################################
 
 
-def get_cmip6(
+def get_cmip6_old(
     aoi: Iterable[gpd.GeoDataFrame],
     variable: Iterable[str] = ("pr", "tas", "tasmin", "tasmax"),
     baseline_period: tuple[int, int] = (1980, 2005),

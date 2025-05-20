@@ -9,7 +9,7 @@ import pandas as pd
 import xarray as xr
 import xesmf as xe
 
-from .downclim.dataset.aoi import get_aoi_informations
+from .aoi import get_aoi_informations
 
 
 def get_hist(

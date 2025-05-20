@@ -10,19 +10,12 @@ import xarray as xr
 
 from ..aoi import get_aoi_informations
 from .connectors import connect_to_ee
-from .utils import (
-    Aggregation,
-    DataProduct,
-    Frequency,
-    VariableAttributes,
-    get_monthly_climatology,
-    get_monthly_mean,
-    prep_dataset,
-    split_period,
-)
+from .utils import (Aggregation, DataProduct, Frequency, VariableAttributes,
+                    get_monthly_climatology, get_monthly_mean, prep_dataset,
+                    split_period)
 
 
-def get_chirps_single_climatology(
+def _get_chirps_area_period(
     aoi_bounds: pd.DataFrame,
     aoi_name: str,
     period: tuple[int, int],
@@ -147,7 +140,7 @@ def get_chirps(
                 If this is not the expected behaviour, please remove the file and run the function again."""
             )
             continue
-        ds = get_chirps_single_climatology(
+        ds = _get_chirps_area_period(
             aoi_b, aoi_n, period, time_frequency, aggregation
         )
         ds.to_netcdf(output_file)

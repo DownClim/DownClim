@@ -12,8 +12,11 @@ from importlib_resources import files
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
 from .aoi import get_aoi
-from .dataset.cmip6 import CMIP6Context
-from .dataset.cordex import CORDEXContext
+from .dataset.chelsa2 import get_chelsa2
+from .dataset.chirps import get_chirps
+from .dataset.cmip6 import CMIP6Context, get_cmip6
+from .dataset.cordex import CORDEXContext, get_cordex
+from .dataset.gshtd import get_gshtd
 from .dataset.utils import Aggregation, DataProduct, Frequency
 from .downscale import DownscaleMethod, run_downscaling
 
@@ -363,6 +366,134 @@ class DownClimContext(BaseModel):
         msg = "ESGF credentials must be a dictionary, a path to a yaml file or None."
         raise ValueError(msg)
 
+    def get_baseline_product(self) -> None:
+        """Get the baseline data for the DownClim context.
+
+        This means that it downloads the baseline product for the baseline period and builds a climatology.
+
+        Returns:
+            None: the baseline data files downloaded.
+        """
+        if self.baseline_product is DataProduct.CHELSA:
+            get_chelsa2(
+                aoi=self.aoi,
+                variable=self.variable,
+                baseline_period=self.baseline_period,
+                evaluation_period=self.evaluation_period,
+                keep_tmp_dir=self.keep_tmp_dir,
+            )
+        elif self.baseline_product is DataProduct.CHIRPS:
+            get_chirps(
+                aoi=self.aoi,
+                baseline_period=self.baseline_period,
+                evaluation_period=self.evaluation_period,
+                time_frequency=self.time_frequency,
+                aggregation=self.downscaling_aggregation,
+            )
+        elif self.baseline_product is DataProduct.GSHTD:
+            get_gshtd(
+                aoi=self.aoi,
+                variable=self.variable,
+                baseline_period=self.baseline_period,
+                evaluation_period=self.evaluation_period,
+                time_frequency=self.time_frequency,
+                aggregation=self.downscaling_aggregation,
+            )
+        else:
+            msg = f"Unknown or not implemented data product '{self.baseline_product}'."
+            raise ValueError(msg)
+
+    def get_evaluation_product(self) -> None:
+        """Get the evaluation data for the DownClim context.
+
+        This means that it downloads the evaluation product for the evaluation period and builds a climatology.
+
+        Returns:
+            None: the evaluation data.
+        """
+        if self.evaluation_product is DataProduct.CHELSA:
+            get_chelsa2(
+                aoi=self.aoi,
+                variable=self.variable,
+                year=self.baseline_period,
+                frequency=self.time_frequency,
+                aggregation=self.downscaling_aggregation,
+                nb_threads=self.nb_threads,
+                output_dir=self.output_dir,
+                keep_tmp_dir=self.keep_tmp_dir,
+            )
+        elif self.evaluation_product is DataProduct.CHIRPS:
+            get_chirps(
+                aoi=self.aoi,
+                baseline_period=self.baseline_period,
+                evaluation_period=self.evaluation_period,
+                time_frequency=self.time_frequency,
+                aggregation=self.downscaling_aggregation,
+            )
+        elif self.evaluation_product is DataProduct.GSHTD:
+            get_gshtd(
+                aoi=self.aoi,
+                variable=self.variable,
+                baseline_period=self.baseline_period,
+                evaluation_period=self.evaluation_period,
+                time_frequency=self.time_frequency,
+                aggregation=self.downscaling_aggregation,
+            )
+        else:
+            msg = f"Unknown or not implemented data product '{self.evaluation_product}'."
+            raise ValueError(msg)
+
+
+    def get_simulations(self) -> None:
+        """Get the simulations data for the DownClim context.
+
+        Depending on the product chosen, this function will download either CMIP6 or CORDEX simulation,
+        or both. It will download according to the CMIP6Context or CORDEXContext defined in the DownClimContext.
+
+        Args:
+            context (DownClimContext): the DownClim context previously defined
+            containing all the necessary information.
+
+        Returns:
+            None: the simulations data is downloaded.
+        """
+        if self.use_cmip6:
+            cmip6_context = self.cmip6_context
+            get_cmip6(
+                aoi=self.aoi,
+                variable=cmip6_context.variable_id,
+                baseline_period=self.baseline_period,
+                evaluation_period=self.evaluation_period,
+                projection_period=self.projection_period,
+                time_frequency=self.time_frequency,
+                aggregation=self.downscaling_aggregation,
+                activity=cmip6_context.activity_id,
+                institution=cmip6_context.institution_id,
+                source=cmip6_context.source_id,
+                experiment=cmip6_context.experiment_id,
+                member=cmip6_context.member_id,
+                table=cmip6_context.table_id,
+                grid_label=cmip6_context.grid_label,
+                baseline=self.baseline_product,
+            )
+        if self.use_cordex:
+            get_cordex(
+                aois=self.aoi,
+                variables=self.variable,
+                periods=self.projection_period,
+                institute=self.institute,
+                model=self.model,
+                experiment=self.experiment,
+                ensemble=self.ensemble,
+                baseline=self.baseline_product,
+            )
+        else:
+            msg = (
+                f"Unknown or not implemented data product '{self.simulations_product}'."
+            )
+            raise ValueError(msg)
+
+
     def downscale(self) -> None:
         """Runs the downscaling process with the current context."""
         run_downscaling(
@@ -380,6 +511,7 @@ class DownClimContext(BaseModel):
             intput_dir=self.output_dir,
             output_dir=f"{self.output_dir}/downscaled",
         )
+
 
 def generate_DownClimContext_template_file(output_file: str) -> None:
     """Generates a template file for DownClimContext.

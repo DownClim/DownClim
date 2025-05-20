@@ -29,7 +29,7 @@ def get_aoi_informations(
     return aois_names, aois_bounds
 
 
-def get_aoi_gadm(aoi: str) -> gpd.geodataframe:
+def _get_aoi_gadm(aoi: str) -> gpd.geodataframe:
     """
     Get aoi administrative boundaries using GADM data.
 
@@ -113,7 +113,7 @@ def get_aoi(
     Path(f"{output_path}").mkdir(parents=True, exist_ok=True)
 
     if isinstance(aoi, str):
-        gdf = get_aoi_gadm(aoi)
+        gdf = _get_aoi_gadm(aoi)
         aoi_name = aoi
     elif isinstance(aoi, tuple):
         if len(aoi) != 5:

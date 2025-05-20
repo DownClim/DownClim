@@ -7,16 +7,8 @@ import ee
 from downclim.aoi import get_aoi, get_aoi_informations
 from downclim.dataset.chelsa2 import get_chelsa2
 from downclim.dataset.chirps import get_chirps
-from downclim.dataset.cmip6 import (
-                                    CMIP6Context,
-                                    get_cmip6_from_list,
-                                    list_available_cmip6_simulations,
-)
-from downclim.dataset.cordex import (
-                                    CORDEXContext,
-                                    get_cordex_from_list,
-                                    list_available_cordex_simulations,
-)
+from downclim.dataset.cmip6 import CMIP6Context, get_cmip6
+from downclim.dataset.cordex import CORDEXContext, get_cordex, get_download_scripts
 from downclim.dataset.gshtd import get_gshtd
 from downclim.downclim import DownClimContext
 from downclim.getters import get_baseline_product
@@ -75,12 +67,11 @@ cordex_context = CORDEXContext(
     frequency="mon",
     variable=["pr", "tas"],
 )
-cordex_simulations = list_available_cordex_simulations(
-    cordex_context, esgf_credential="config/esgf_credential.yaml"
-)
+cordex_simulations = cordex_context.list_available_simulations(esgf_credential="config/esgf_credential.yaml")
+cordex_simulations = get_download_scripts(cordex_simulations, esgf_credential="config/esgf_credential.yaml")
 cordex_simulations.to_csv("results/cordex/cordex_simulations.csv")
 
-get_cordex_from_list(
+get_cordex(
     aoi=aois,
     cordex_simulations=cordex_simulations,
     baseline_period=(1980, 1981),
@@ -102,10 +93,10 @@ cmip6_context = CMIP6Context(
     variable=["tas", "pr"],
     grid_label="gn",
 )
-cmip6_simulations = list_available_cmip6_simulations(cmip6_context)
+cmip6_simulations = cmip6_context.list_available_simulations()
 cmip6_simulations.to_csv("results/cmip6/cmip6_simulations.csv")
 
-get_cmip6_from_list(
+get_cmip6(
     aoi=aois,
     cmip6_simulations=cmip6_simulations,
     baseline_period=(1980, 1981),

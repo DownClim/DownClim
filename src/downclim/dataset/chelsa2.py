@@ -15,15 +15,8 @@ import xarray as xr
 from multiprocess import Pool
 
 from ..aoi import get_aoi_informations
-from .utils import (
-    Aggregation,
-    DataProduct,
-    Frequency,
-    VariableAttributes,
-    get_monthly_climatology,
-    prep_dataset,
-    split_period,
-)
+from .utils import (Aggregation, DataProduct, Frequency, VariableAttributes,
+                    get_monthly_climatology, prep_dataset, split_period)
 
 
 def _get_chelsa2_one_file(
@@ -68,7 +61,7 @@ def _get_chelsa2_one_file(
     return chelsa_files
 
 
-def _get_chelsa2_year(
+def _get_chelsa2_year_var(
     aoi_name: list[str],
     aoi_bound: list[pd.DataFrame],
     year: int,
@@ -78,7 +71,7 @@ def _get_chelsa2_year(
     chunks: dict[str, int] | None = None,
 ) -> dict[str, str]:
     """
-    Get CHELSA data for a given year and given variables.
+    Get CHELSA data for one given year and one given variables.
 
     Returns
     -------
@@ -140,8 +133,8 @@ def get_chelsa2(
     keep_tmp_dir: bool = False,
 ) -> None:
     """
-    Retrieve CHELSA data for a list of regions, variables and years. This returns one monthly climatological
-    xarray.Dataset object / netcdf file for each region and period.
+    Retrieve CHELSA data for a list of regions, and a list of variables and a given period. This returns one monthly climatological
+    xarray.Dataset object / netcdf file with all variables included for each region.
 
     Note: CHELSA data is available from 1980 to 2019.
 
@@ -216,7 +209,7 @@ def get_chelsa2(
         paths.append(
             pool.starmap_async(
             #pool.starmap(
-                _get_chelsa2_year,
+                _get_chelsa2_year_var,
                 [
                     (aoi_name, aoi_bound, year, var, frequency, tmp_dir)
                     for year in years

@@ -11,20 +11,13 @@ import xarray as xr
 
 from ..aoi import get_aoi_informations
 from .connectors import connect_to_ee
-from .utils import (
-    Aggregation,
-    DataProduct,
-    Frequency,
-    VariableAttributes,
-    get_monthly_climatology,
-    get_monthly_mean,
-    prep_dataset,
-    split_period,
-)
+from .utils import (Aggregation, DataProduct, Frequency, VariableAttributes,
+                    get_monthly_climatology, get_monthly_mean, prep_dataset,
+                    split_period)
 
 
 # funs
-def get_gshtd_single(
+def _get_gshtd_single(
     aoi_bounds: pd.DataFrame,
     aoi_name: str,
     variable: str,
@@ -32,6 +25,9 @@ def get_gshtd_single(
     time_frequency: Frequency = Frequency.MONTHLY,
     aggregation: Aggregation = Aggregation.MONTHLY_MEAN,
 ) -> xr.Dataset:
+    """
+    Internal function. Get GSHTD data for one area of interest, one variable and one time period.
+    """
     print(
         f'Getting GSHTD data for period : "{period}" and variable : "{variable}" on area of interest : "{aoi_name}"'
     )
@@ -60,9 +56,8 @@ def get_gshtd_single(
     else:
         msg = "Currently only monthly-means aggregation available!"
         raise ValueError(msg)
-    ds = ds.where(ds[variable] > 0)
 
-    return ds
+    return ds.where(ds[variable] > 0)
 
 
 # code
@@ -78,7 +73,6 @@ def get_gshtd(
     """
     Get GSHTD data (https://gee-community-catalog.org/projects/gshtd/)
     for a given set of areas of interest and time periods, for given variables.
-    Sequential calls get_gshtd.
 
     Parameters
     ----------
@@ -135,7 +129,7 @@ def get_gshtd(
             continue
         ds = xr.merge(
             [
-                get_gshtd_single(aoi_b, aoi_n, var, period, time_frequency, aggregation)
+                _get_gshtd_single(aoi_b, aoi_n, var, period, time_frequency, aggregation)
                 for var in variable
             ]
         )

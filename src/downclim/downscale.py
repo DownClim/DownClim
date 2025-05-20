@@ -3,6 +3,7 @@ from __future__ import annotations
 from enum import Enum
 from pathlib import Path
 from typing import Any
+from warnings import warn
 
 import geopandas as gpd
 import xarray as xr
@@ -65,21 +66,24 @@ def run_downscaling(
     aggregation: Aggregation = Aggregation.MONTHLY_MEAN,
     method: DownscaleMethod = DownscaleMethod.BIAS_CORRECTION,
     input_dir: str = "./results",
-    output_dir: str = "./results/downscaled",
+    output_dir: str | None = None,
 ) -> None:
 
     # Create output directory
     if output_dir is None:
-        output_dir = "./results/downscaled/"
+        output_dir = "./results/downscaled"
+        msg  = f"Output directory not provided. Using default output directory ${output_dir}."
+        warn(msg, stacklevel=1)
     Path(output_dir).mkdir(parents=True, exist_ok=True)
+
     if cmip6_simulations_to_downscale is None or cmip6_simulations_to_downscale == []:
         msg = "No CMIP6 simulations to downscale provided."
-        print(msg)
+        warn(msg, stacklevel=1)
     else:
         Path(f"{output_dir}/cmip6").mkdir(parents=True, exist_ok=True)
     if cordex_simulations_to_downscale is None or cordex_simulations_to_downscale == []:
         msg = "No CORDEX simulations to downscale provided."
-        print(msg)
+        warn(msg, stacklevel=1)
     else:
         Path(f"{output_dir}/cordex").mkdir(parents=True, exist_ok=True)
 

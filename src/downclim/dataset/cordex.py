@@ -4,11 +4,11 @@ import os
 import re
 import shutil
 import subprocess
-import warnings
 from collections.abc import Iterable
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
+from warnings import warn
 
 import geopandas as gpd
 import multiprocess as mp
@@ -83,7 +83,7 @@ class CORDEXContext(BaseModel):
         example=["RCP", "Historical"],
         description="Type of experiment : weither 'RCP' or 'Historical' or 'All'",
     )
-    experiment: list[str] | None = Field(
+    ensemble: list[str] | None = Field(
         default="r1i1p1", description="Ensemble member"
     )
     rcm_name: list[str] | None = Field(
@@ -117,6 +117,8 @@ class CORDEXContext(BaseModel):
         extra = "forbid"  # Forbid extra data during model initialization.
 
     @field_validator(
+        "domain",
+        "ensemble",
         "experiment",
         "institute",
         "driving_model",
@@ -150,14 +152,14 @@ class CORDEXContext(BaseModel):
     ) -> list[str]:
         if v is None:
             msg = "No experiment provided, defaulting to ['historical', 'rcp26']"
-            warnings.warn(msg, stacklevel=1)
+            warn(msg, stacklevel=1)
             return ["historical", "rcp26"]
         if isinstance(v, str):
             return [v]
         if not any(exp == "historical" for exp in v):
             msg = """Historical experiment is mandatory to associate with projections.
                 By default we add 'historical' to the list of experiments."""
-            warnings.warn(msg, stacklevel=1)
+            warn(msg, stacklevel=1)
             return [*v, "historical"]
         return v
 
@@ -168,11 +170,11 @@ class CORDEXContext(BaseModel):
     ) -> list[str]:
         if not project:
             msg = "No project provided, defaulting to 'CORDEX'"
-            warnings.warn(msg, stacklevel=1)
+            warn(msg, stacklevel=1)
             return ["CORDEX"]
         if isinstance(project, str):
             return [project]
-        return project
+        return list(project)
 
     @field_validator("product", mode="before")
     @classmethod
@@ -181,11 +183,60 @@ class CORDEXContext(BaseModel):
     ) -> list[str]:
         if not product:
             msg = "No product provided, defaulting to 'output'"
-            warnings.warn(msg, stacklevel=1)
+            warn(msg, stacklevel=1)
             return ["output"]
         if isinstance(product, str):
             return [product]
-        return product
+        return list(product)
+
+    @field_validator("frequency", mode="before")
+    @classmethod
+    def validate_frequency(cls, frequency: str | Frequency) -> Frequency:
+        if isinstance(frequency, str):
+            frequency = Frequency(frequency)
+        if frequency is not Frequency.MONTHLY:
+            msg = f"""Frequency {frequency} is not valid. Please provide a valid string or a Frequency object.
+            Right now only 'monthly' is implemented."""
+            raise ValueError(msg)
+        return frequency
+
+    def list_available_simulations(
+        self,
+        esgf_credential: str = "config/esgf_credential.yaml",
+        server: str = DataProduct.CORDEX.url,
+    ) -> pd.DataFrame:
+        """List all available CORDEX simulations available on esgf node for a given context.
+
+        Parameters
+        ----------
+            esgf_credential (str, optional): Path to the ESGF credentials file.
+                Keys expected in the files are "openid" and "password".
+                Defaults to "config/esgf_credential.yaml".
+            server (str, optional): URL to the ESGF node. Defaults to "https://esgf-node.ipsl.upmc.fr/esg-search".
+
+        Returns:
+            pd.DataFrame: List of CORDEX simulations available on esgf node meeting the search criteria.
+        """
+        context = self.model_dump()
+
+        # esgf connection
+        conn = connect_to_esgf(esgf_credential, server)
+        # list CORDEX datasets matching context
+        cordex_simulations = inspect_cordex(context=context, connector=conn)
+        # filter simulations that don't have all variables requested
+        cordex_simulations = cordex_simulations.groupby(
+            ["institute", "driving_model", "rcm_name", "experiment", "ensemble"]
+        ).filter(lambda x: set(context["variable"]) == (set(x["variable"])))
+        # filter simulations that don't have all experiment requested
+        cordex_simulations = cordex_simulations.groupby(
+            ["institute", "driving_model", "rcm_name", "ensemble"]
+        ).filter(lambda x: set(context["experiment"])==(set(x["experiment"])))
+
+        if cordex_simulations.empty:
+            msg = "No CORDEX simulations found for the given context"
+            warn(msg, stacklevel=1)
+        return cordex_simulations
+
 
 def _get_cordex_wget(
     script: str,
@@ -276,6 +327,9 @@ def get_download_scripts(
     """
 
     # connect
+    if esgf_credential is None:
+        msg = "No esgf_credential provided, please provide one to get the download scripts."
+        raise KeyError(msg)
     connector = connect_to_esgf(esgf_credential, server=DataProduct.CORDEX.url)
 
     facets = ", ".join(simulations_columns)
@@ -290,74 +344,6 @@ def get_download_scripts(
         cordex_scripts.append(ctx.search(ignore_facet_check=True)[0].file_context().get_download_script())
     return simulations.assign(download_script=cordex_scripts)
 
-def list_available_cordex_simulations(
-    context: dict[str, str | Iterable[str]] | CORDEXContext,
-    esgf_credential: str = "config/esgf_credential.yaml",
-    server: str = DataProduct.CORDEX.url,
-) -> pd.DataFrame:
-    """List all available CORDEX simulations available on esgf node for a given context.
-
-    Parameters
-    ----------
-        context(dict[str, str | Iterable[str]] | CORDEXContext):
-            Class containing information about the query on the CORDEX dataset, or dictionary.
-            Entries of the dictionary can be either `str` or `Iterables` (e.g. `list`) if multiple values are provided.
-            These following keys are available, and correspond to the keys defined defined on ESGF nodes, cf. https://esgf-node.ipsl.upmc.fr/search/cordex-ipsl/ . None are mandatory:
-                - "project": str, Name of the project,
-                    e.g "CORDEX", "CORDEX-Adjust". If not provided, "CORDEX" is used.
-                - "product": str, Name of the product,
-                    e.g "output", "output-adjust". If not provided, "output" is used.
-                - "domain": str, CORDEX domain to look for,
-                    e.g "SAM-22", "AFR-22", "AUS-22".
-                - "institute": str, Institute name that produced the data,
-                    e.g "IPSL", "NCAR"
-                - "driving_model": str, global climate model that provided the boundary conditions to the RCM,
-                    e.g "CNRM-CM5", "MPI-ESM-LR"
-                - "experiment": str, experiment name, historical or futur scenarios to search for,
-                    e.g "rcp26", "rcp85", "evaluation", "historical"
-                - "experiment_family": str, type of experiment,
-                    either "RCP" or "Historical"
-                - "ensemble": str, ensemble member,
-                    e.g "r1i1p1", "r3i1p1"
-                - "rcm_name": str, name of the regional climate model,
-                    e.g "CCLM4-8-17", "RACMO22E"
-                - "rcm_version": str, version of the downscaling realisation,
-                    e.g "v1", "v2"
-                - "time_frequency": str, time frequency of the data,
-                    e.g "mon"
-                - "variable": str, name of the variable to search for,
-                    e.g "tas", "pr"
-                - "variable_long_name": str, long name of the variable,
-                    e.g "near-surface air temperature", "precipitation"
-        esgf_credential (str, optional): Path to the ESGF credentials file.
-            Keys expected in the files are "openid" and "password".
-            Defaults to "config/esgf_credential.yaml".
-        server (str, optional): URL to the ESGF node. Defaults to "https://esgf-node.ipsl.upmc.fr/esg-search".
-
-    Returns:
-        pd.DataFrame: List of CORDEX simulations available on esgf node meeting the search criteria.
-    """
-
-    if isinstance(context, CORDEXContext):
-        context = context.model_dump()
-
-    # esgf connection
-    conn = connect_to_esgf(esgf_credential, server)
-    # list CORDEX datasets matching context
-    cordex_simulations = inspect_cordex(context=context, connector=conn)
-    # filter simulations that don't have all variables requested
-    cordex_simulations = cordex_simulations.groupby(
-        ["institute", "driving_model", "rcm_name", "experiment", "ensemble"]
-    ).filter(lambda x: set(context["variable"]) == (set(x["variable"])))
-    # filter simulations that don't have all experiment requested
-    cordex_simulations = cordex_simulations.groupby(
-        ["institute", "driving_model", "rcm_name", "ensemble"]
-    ).filter(lambda x: set(context["experiment"])==(set(x["experiment"])))
-
-    if cordex_simulations.empty:
-        msg = "No CORDEX simulations found for the given context"
-        warnings.warn(msg, stacklevel=1)
-    return cordex_simulations
 
 def inspect_cordex(
     context: dict[str, str | Iterable[str]],
@@ -399,7 +385,8 @@ def inspect_cordex(
     ctx = connector.new_context(facets=facets, **context_cleaned)
     if ctx.hit_count == 0:
         msg = "The query has no results"
-        raise SystemExit(msg)
+        warn(msg, stacklevel=1)
+        return pd.DataFrame()
     df_cordex = pd.DataFrame(
         [re.split("[|.]", res.dataset_id, maxsplit=12) for res in ctx.search()]
     ).drop_duplicates()
@@ -426,7 +413,7 @@ def get_context_from_filename(filename: str) -> dict[str, str]:
     keys = ["variable", "domain", "driving_model", "experiment", "ensemble", "rcm_name", "rcm_version", "time_frequency", "period"]
     return dict(zip(keys, only_name.split(".")[0].split("_"), strict=False))
 
-def get_filename_from_cordex_context(
+def _get_filename_from_cordex_context(
     output_dir: str,
     aoi_n: str,
     data_product: DataProduct,
@@ -439,7 +426,7 @@ def get_filename_from_cordex_context(
     tmin: int,
     tmax: int,
 ) -> str:
-    """Get the name of the output file for the simulation."""
+    """Internal function. Get the name of the output file for the simulation given a Cordex context."""
     return f"{output_dir}/{aoi_n}_{data_product.product_name}_{domain}_{driving_model}_{rcm_name}_{ensemble}_\
                     {rcm_version}_{aggregation.value}_{tmin}-{tmax}.nc"
 
@@ -474,7 +461,7 @@ def get_cordex_context_from_filename(filename: str) -> dict[str, str]:
     return dict(zip(context_items, context_elements, strict=False))
 
 
-def get_cordex_from_list(
+def get_cordex(
     aoi: list[gpd.GeoDataFrame],
     cordex_simulations: pd.DataFrame,
     baseline_period: tuple[int, int] = (1980, 2005),
@@ -519,6 +506,10 @@ def get_cordex_from_list(
             to populate the DataFrame with the adequate 'download_scripts' column."""
             raise KeyError(msg)
 
+    # Define time periods
+    periods_years = [baseline_period, evaluation_period, projection_period]
+    periods_names = ["baseline", "evaluation", "projection"]
+
     # download
     pool = mp.Pool(nb_threads)
     pool.starmap_async(
@@ -536,10 +527,6 @@ def get_cordex_from_list(
         df_files.append(df_f)
     df_files = pd.concat(df_files, ignore_index=True)
 
-    # Define time periods
-    periods_years = [baseline_period, evaluation_period, projection_period]
-    periods_names = ["baseline", "evaluation", "projection"]
-
     # group files for each simulation
     group_context = ["domain", "driving_model", "ensemble", "rcm_name", "rcm_version"]
     for group_name, group in df_files.groupby(group_context):
@@ -552,7 +539,7 @@ def get_cordex_from_list(
             # check if aoi is in domain
             if not aoi_in_domain[aoi_n][domain]:
                 msg = f"AOI {aoi_n} is not in domain {domain}. Skipping."
-                warnings.warn(msg, stacklevel=1)
+                warn(msg, stacklevel=1)
                 continue
             # Extend the AOI to avoid edge effects
             ds_aoi = ds.sel(
@@ -585,7 +572,7 @@ def get_cordex_from_list(
 ############################################################################################################
 
 
-def get_cordex(
+def get_cordex_old(
     aois: list[gpd.GeoDataFrame],
     variables: list[str],
     baseline_period: tuple[int, int] = (1980, 2005),

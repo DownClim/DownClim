@@ -13,6 +13,7 @@ report.html
 *.err
 *.out
 # other
+.DS_Store
 .cache
 .java
 .oracle_jre_usage
@@ -35,6 +36,8 @@ results0
 rules/
 # build
 build/
+_build/
+api_reference/
 *egg-info
 *pyc*
 # version

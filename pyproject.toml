@@ -1,24 +1,12 @@
-[build-system]
-requires = ["setuptools>=61", "setuptools_scm[toml]>=7"]
-build-backend = "setuptools.build_meta"
-
 [project]
-name = "DownClim"
 authors = [
   { name = "Sylvain Schmidt", email = "sylvain.schmidt@cirad.fr" },
   { name = "Thomas Arsouze", email = "thomas.arsouze@cirad.fr" },
-  { name = "Achile Mauri", email = "mauri.achille@gmail.com"},
   { name = "Ghislain Vieilledent", email = "ghislain.vieilledent@cirad.fr" }
 ]
-description = "Tool for dynamical downscaling for regional and national climate projections."
-readme = "README.md"
-license.file = "LICENSE"
-requires-python = ">=3.10"
 classifiers = [
-  "Development Status :: 1 - Planning",
+  "Development Status :: 3 - Alpha",
   "Intended Audience :: Science/Research",
-  "Intended Audience :: Developers",
-  "License :: OSI Approved :: MIT License",
   "Operating System :: OS Independent",
   "Programming Language :: Python",
   "Programming Language :: Python :: 3",
@@ -26,17 +14,33 @@ classifiers = [
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
   "Topic :: Scientific/Engineering",
   "Typing :: Typed",
 ]
+description = "Tool for dynamical downscaling climate projections."
 dynamic = ["version"]
+keywords = [
+  "climate",
+  "downscaling",
+  "CMIP",
+  "CORDEX",
+  "dynamical downscaling",
+  "climate projections",
+  "climate models",
+]
+license = { text = "MIT" }
+name = "downclim"
+readme = "README.md"
+requires-python = ">=3.10"
+
 dependencies = [
   "aenum",
   "numpy",
   "geopandas",
   "pandas",
   "xarray",
-  "xesmf>=8.7",
+  "xesmf>=0.8.7",
   "xee",
   "esgf-pyclient",
   "gcsfs",
@@ -63,19 +67,22 @@ docs = [
   "sphinx_copybutton",
   "sphinx_autodoc_typehints",
   "furo>=2023.08.17",
+  "sphinx-sitemap",
+  "nbsphinx",
+  "sphinx-design",
 ]
 
 [project.urls]
-Homepage = "https://github.com/sylvainschmitt/DownClim"
-"Bug Tracker" = "https://github.com/sylvainschmitt/DownClim/issues"
-Discussions = "https://github.com/sylvainschmitt/DownClim/discussions"
-Changelog = "https://github.com/sylvainschmitt/DownClim/releases"
+Homepage = "https://github.com/DownClim/DownClim"
+"Bug Tracker" = "https://github.com/DownClim/DownClim/issues"
+Discussions = "https://github.com/DownClim/DownClim/discussions"
+Changelog = "https://github.com/DownClim/DownClim/releases"
+
+[build-system]
+requires = ["setuptools>=61", "setuptools_scm[toml]>=7"]
+build-backend = "setuptools.build_meta"
 
 [tool.setuptools_scm]
-write_to = "src/downclim/_version.py"
-
-[tool.setuptools.package-data]
-"downclim.data" = ["*.yaml"]
 
 [tool.pytest.ini_options]
 minversion = "6.0"

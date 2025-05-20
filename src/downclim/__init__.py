@@ -5,7 +5,3 @@ DownClim: Tool for dynamical downscaling for regional and national climate proje
 """
 
 from __future__ import annotations
-
-from ._version import version as __version__
-
-__all__ = ["__version__"]
