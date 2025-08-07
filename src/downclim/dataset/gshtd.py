@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
 from dataclasses import asdict
 from pathlib import Path
+from typing import Any
 
 import ee
 import geopandas as gpd
@@ -11,9 +11,16 @@ import xarray as xr
 
 from ..aoi import get_aoi_informations
 from .connectors import connect_to_ee
-from .utils import (Aggregation, DataProduct, Frequency, VariableAttributes,
-                    get_monthly_climatology, get_monthly_mean, prep_dataset,
-                    split_period)
+from .utils import (
+    Aggregation,
+    DataProduct,
+    Frequency,
+    VariableAttributes,
+    get_monthly_climatology,
+    get_monthly_mean,
+    prep_dataset,
+    split_period,
+)
 
 
 # funs
@@ -62,13 +69,13 @@ def _get_gshtd_single(
 
 # code
 def get_gshtd(
-    aoi: Iterable[gpd.GeoDataFrame | pd.DataFrame],
-    variable: Iterable[str] = ("tas", "tasmin", "tasmax"),
+    aoi: list[gpd.GeoDataFrame],
+    variable: list[str] = ("tas", "tasmin", "tasmax"),
     period: tuple[int, int] = (1980, 2005),
     time_frequency: Frequency = Frequency.MONTHLY,
     aggregation: Aggregation = Aggregation.MONTHLY_MEAN,
     output_dir: str | None = None,
-    **kwargs: dict[str, any],
+    **kwargs: dict[str, Any],
 ) -> None:
     """
     Get GSHTD data (https://gee-community-catalog.org/projects/gshtd/)

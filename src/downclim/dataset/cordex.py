@@ -14,7 +14,6 @@ import geopandas as gpd
 import multiprocess as mp
 import numpy as np
 import pandas as pd
-import pyesgf
 import xarray as xr
 import xesmf as xe
 from pydantic import BaseModel, Field, field_validator
@@ -50,64 +49,66 @@ class CORDEXContext(BaseModel):
 
     project: list[str] = Field(
         default=["CORDEX"],
-        example="CORDEX",
+        examples=["CORDEX"],
         description="Name of the project"
     )
     product: list[str] | None = Field(
         default=["output"],
-        example="output",
+        examples=["output"],
         description="Name of the product. You probably want to keep the default value.",
     )
     domain: list[str] | None = Field(
         default=None,
-        example=["EUR-11", "AFR-22"],
+        examples=[["EUR-11", "AFR-22"], ["EUR-11", "EUR-44"]],
         description="CORDEX domain(s) to look for",
     )
     institute: list[str] | None = Field(
         default=None,
-        example=["IPSL", "NCAR"],
+        examples=[["IPSL", "NCAR"]],
         description="Institute name that produced the data",
     )
     driving_model: list[str] | None = Field(
         default=None,
-        example=["IPSL-CM6A-LR", "CMCC-CM2-HR4"],
+        examples=[["IPSL-CM6A-LR", "CMCC-CM2-HR4"]],
         description="Name of the global climate model used to drive the RCM",
     )
     experiment: list[str] | None = Field(
         default=["historical", "rcp26"],
-        example=["historical", "rcp26"],
+        examples=[["historical", "rcp26"]],
         description="Name of the experiment type of the simulation",
     )
     experiment_family: list[str] | None = Field(
         default=None,
-        example=["RCP", "Historical"],
-        description="Type of experiment : weither 'RCP' or 'Historical' or 'All'",
+        examples=[["RCP", "Historical"]],
+        description="Family of experiment : weither 'RCP' or 'Historical' or 'All'",
     )
     ensemble: list[str] | None = Field(
-        default="r1i1p1", description="Ensemble member"
+        default=["r1i1p1"], description="Ensemble member"
     )
     rcm_name: list[str] | None = Field(
         default=None,
-        example=["WRF381P", "RCA4"],
+        examples=[["WRF381P", "RCA4"]],
         description="Name of the regional climate model (RCM)",
     )
     rcm_version: list[str] | None = Field(
         default=None,
-        example=["v1", "v2"],
+        examples=[["v1", "v2"]],
         description="Version of the downscaling realisation",
     )
     frequency: Frequency = Field(
-        default=Frequency.MONTHLY,
-        example="mon",
+        default=Frequency.MONTHLY, # type: ignore[assignment]
+        examples=[Frequency.MONTHLY, "mon"],
         description="Time frequency of the data",
     )
     variable: list[str] | None = Field(
-        default=("tas", "pr"),
-        example=["tas", "tasmin", "tasmax", "pr"],
+        default=["tas", "pr"],
+        examples=[("tas", "pr"), ["tas", "tasmin", "tasmax", "pr"]],
         description="Variables name"
     )
     variable_long_name: list[str] | None = Field(
-        default=None, example=[], description="Long name of the variables"
+        default=None,
+        examples=["Near-Surface Air Temperature"],
+        description="Long name of the variables"
     )
 
     class Config:
@@ -145,10 +146,10 @@ class CORDEXContext(BaseModel):
             raise ValueError(msg)
         raise ValueError(msg)
 
-    @field_validator("experiment", mode="before")
+    @field_validator("experiment", mode="after")
     @classmethod
     def validate_experiment(
-        cls, v: str | list[str] | None
+        cls, v: str | Iterable[str] | None
     ) -> list[str]:
         if v is None:
             msg = "No experiment provided, defaulting to ['historical', 'rcp26']"
@@ -161,9 +162,9 @@ class CORDEXContext(BaseModel):
                 By default we add 'historical' to the list of experiments."""
             warn(msg, stacklevel=1)
             return [*v, "historical"]
-        return v
+        return list(v)
 
-    @field_validator("project", mode="before")
+    @field_validator("project", mode="after")
     @classmethod
     def validate_project(
         cls, project: str | Iterable[str] | None
@@ -176,7 +177,7 @@ class CORDEXContext(BaseModel):
             return [project]
         return list(project)
 
-    @field_validator("product", mode="before")
+    @field_validator("product", mode="after")
     @classmethod
     def validate_product(
         cls, product: str | Iterable[str] | None
@@ -189,7 +190,7 @@ class CORDEXContext(BaseModel):
             return [product]
         return list(product)
 
-    @field_validator("frequency", mode="before")
+    @field_validator("frequency", mode="after")
     @classmethod
     def validate_frequency(cls, frequency: str | Frequency) -> Frequency:
         if isinstance(frequency, str):
@@ -245,11 +246,11 @@ def _get_cordex_wget(
     tmp_dir: str="./results/tmp/cordex",
 ) -> bool:
 
-    script_name = f"{tmp_dir}/wget_{i}.sh"
+    script_path = Path(f"{tmp_dir}/wget_{i}.sh")
 
     # Write script to file
     # Select only required files corresponding to the required periods
-    with Path(script_name).open(mode="w") as writer:
+    with script_path.open(mode="w", encoding="utf-8") as writer:
         for line in script.split("\n"):
             if re.match(r".*\.(nc)", line):
                 tmin, tmax = (
@@ -261,8 +262,8 @@ def _get_cordex_wget(
             else:
                 writer.write(line + "\n")
 
-    Path.chmod(script_name, 0o750)
-    subprocess.check_output(["/bin/bash", Path(script_name).name], cwd=tmp_dir)
+    script_path.chmod(0o750)
+    subprocess.check_output(["/bin/bash", script_path.name], cwd=tmp_dir)
     return True
 
 @lru_cache
@@ -291,10 +292,10 @@ def _aoi_in_domain(aoi_bounds: pd.DataFrame, domain: pd.DataFrame) -> bool:
         bool: True if the AOI is in the domain, False otherwise.
     """
     return (
-        aoi_bounds["minx"].values >= domain["ll_lon"].values
-        and aoi_bounds["miny"].values >= domain["ll_lat"].values
-        and aoi_bounds["maxx"].values <= domain["ur_lon"].values
-        and aoi_bounds["maxy"].values <= domain["ur_lat"].values
+        aoi_bounds["minx"].to_numpy() >= domain["ll_lon"].to_numpy()
+        and aoi_bounds["miny"].to_numpy() >= domain["ll_lat"].to_numpy()
+        and aoi_bounds["maxx"].to_numpy() <= domain["ur_lon"].to_numpy()
+        and aoi_bounds["maxy"].to_numpy() <= domain["ur_lat"].to_numpy()
     )[0] is np.True_
 
 def _check_cordex_download(
@@ -310,6 +311,8 @@ def _check_cordex_download(
     Returns:
         pd.DataFrame: DataFrame containing the list of simulations and an additional column indicating if the download has been successful.
     """
+
+    return None  # TODO: Implement this function
 
 
 def get_download_scripts(
@@ -347,7 +350,7 @@ def get_download_scripts(
 
 def inspect_cordex(
     context: dict[str, str | Iterable[str]],
-    connector: pyesgf.SearchConnection,
+    esgf_credential: str | None = None,
 ) -> pd.DataFrame:
     """
     Inspects ESGF server to get information about the available datasets provided the context.
@@ -362,13 +365,20 @@ def inspect_cordex(
             - time_frequency: str
             - experiment: str
             - variable: str
-    connector: pyesgf.SearchConnection
-        Connector to the ESGF server. Obtained using the `connect_to_esgf()` function.
+    esgf_credential: str | None = None
+        Path to the ESGF credentials file, if needs to reconnect.
+        Defaults to None, in which case the function will fail.
 
     Returns
     -------
     pd.DataFrame: DataFrame containing information about the available datasets matching the query
     """
+
+    # connect
+    if esgf_credential is None:
+        msg = "No esgf_credential provided, please provide one to get the download scripts."
+        raise KeyError(msg)
+    connector = connect_to_esgf(esgf_credential, server=DataProduct.CORDEX.url)
 
     # name mapping between context / CORDEX dataset
     cordex_name_mapping = {
@@ -432,17 +442,17 @@ def _get_filename_from_cordex_context(
 
 
 def get_cordex_context_from_filename(filename: str) -> dict[str, str]:
-    """Get CMIP6 context from a filename.
+    """Get CORDEX context from a filename.
 
     Parameters
     ----------
     filename: str
-        Filename containing CMIP6 context of the simulation.
+        Filename containing CORDEX context of the simulation.
 
     Returns
     -------
     dict[str, str]
-        List of main CMIP6 context information, including:
+        List of main CORDEX context information, including:
             - output_dir
             - aoi_n
             - data_product
@@ -467,13 +477,50 @@ def get_cordex(
     baseline_period: tuple[int, int] = (1980, 2005),
     evaluation_period: tuple[int, int] = (2006, 2019),
     projection_period: tuple[int, int] = (2071, 2100),
-    aggregation: Aggregation = Aggregation.MONTHLY_MEAN,
+    aggregation: Aggregation = Aggregation.MONTHLY_MEAN,  # type: ignore[assignment]
     output_dir: str | None = None,
     tmp_dir: str | None = None,
     nb_threads: int = 2,
     keep_tmp_dir: bool = False,
-    esgf_credential: str | None = None,
+    esgf_credentials: str | None = None,
 ) -> None:
+    """Download CORDEX data for the given area of interest (AOI) and provided simulations list.
+
+    Parameters
+    ----------
+    aoi: list[gpd.GeoDataFrame]
+        List of areas of interest (AOI) to download data for. Typically the output of :func:`~downclim.aoi.get_aoi` function.
+    cordex_simulations: pd.DataFrame
+        DataFrame containing the list of CORDEX simulations to download. It can be obtained using the : func:`~downclim.dataset.cordex.inspect_cordex` function.list_available_simulations` method.
+    baseline_period: tuple[int, int], optional
+        Baseline period for the data, as a tuple of (start year, end year). Defaults to (1980, 2005).
+    evaluation_period: tuple[int, int], optional
+        Evaluation period for the data, as a tuple of (start year, end year). Defaults to (2006, 2019).
+    projection_period: tuple[int, int], optional
+        Projection period for the data, as a tuple of (start year, end year). Defaults to (2071, 2100).
+    aggregation: Aggregation, optional
+        Aggregation method to apply to the data. Defaults to Aggregation.MONTHLY_MEAN.
+    output_dir: str | None, optional
+        Directory where the output files will be saved. If None, set to "./results/CORDEX". Defaults to None.
+    tmp_dir: str | None, optional
+        Directory where the temporary files will be saved. If None, set to "./results/tmp/CORDEX". Defaults to None.
+    nb_threads: int, optional
+        Number of threads to use for downloading the data. Defaults to 2.
+    keep_tmp_dir: bool, optional
+        If True, keep the temporary directory after the download. Defaults to False.
+    esgf_credentials: str | None, optional
+        Path to the ESGF credentials file. If None, the function will fail. Defaults to None.
+
+    Raises
+    ------
+    KeyError: If the 'download_script' column is not present in the `cordex_simulations` DataFrame.
+    ValueError: If the aggregation method is not supported (currently only MONTHLY_MEAN is implemented).
+    Warning: If the AOI is not in the domain of the simulation selected.
+
+    Returns
+    -------
+    None: The function does not return anything, but saves the downloaded data to the specified output directory.
+    """
 
     data_product = DataProduct.CORDEX
 
@@ -498,11 +545,11 @@ def get_cordex(
 
     # check if need to et the download scripts
     if 'download_script' not in cordex_simulations.columns:
-        if esgf_credential is not None:
-            cordex_simulations = get_download_scripts(cordex_simulations, esgf_credential)
+        if esgf_credentials is not None:
+            cordex_simulations = get_download_scripts(cordex_simulations, esgf_credentials)
         else:
             msg = """To retrieve the desired CORDEX data, you need to get the 'download_scripts' from ESGF.
-            Please provide 'esgf_credential' as argument to the function to do so, or run the 'get_download_scripts'
+            Please provide 'esgf_credentials' as argument to the function to do so, or run the 'get_download_scripts'
             to populate the DataFrame with the adequate 'download_scripts' column."""
             raise KeyError(msg)
 
@@ -543,8 +590,8 @@ def get_cordex(
                 continue
             # Extend the AOI to avoid edge effects
             ds_aoi = ds.sel(
-                rlon=slice(aoi_b["minx"].iloc[0] - 2, aoi_b["maxx"].iloc[0] + 2),
-                rlat=slice(aoi_b["miny"].iloc[0] - 2, aoi_b["maxy"].iloc[0] + 2)
+                rlon=slice(aoi_b["minx"] - 2, aoi_b["maxx"] + 2),
+                rlat=slice(aoi_b["miny"] - 2, aoi_b["maxy"] + 2)
                 )
             # write per aoi and period
             for period_year, period_name in zip(periods_years, periods_names, strict=False):
@@ -557,7 +604,7 @@ def get_cordex(
                 else:
                     msg = "Currently only monthly-means aggregation available!"
                     raise ValueError(msg)
-                output_file = get_filename_from_cordex_context(
+                output_file = _get_filename_from_cordex_context(
                     output_dir, aoi_n, data_product, domain, driving_model, rcm_name, ensemble, rcm_version, aggregation, tmin, tmax
                 )
                 ds_clim.to_netcdf(output_file)

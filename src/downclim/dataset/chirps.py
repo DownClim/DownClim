@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from pathlib import Path
+from typing import Any
 
 import ee
 import geopandas as gpd
@@ -10,9 +11,16 @@ import xarray as xr
 
 from ..aoi import get_aoi_informations
 from .connectors import connect_to_ee
-from .utils import (Aggregation, DataProduct, Frequency, VariableAttributes,
-                    get_monthly_climatology, get_monthly_mean, prep_dataset,
-                    split_period)
+from .utils import (
+    Aggregation,
+    DataProduct,
+    Frequency,
+    VariableAttributes,
+    get_monthly_climatology,
+    get_monthly_mean,
+    prep_dataset,
+    split_period,
+)
 
 
 def _get_chirps_area_period(
@@ -82,7 +90,7 @@ def get_chirps(
     time_frequency: Frequency = Frequency.MONTHLY,
     aggregation: Aggregation = Aggregation.MONTHLY_MEAN,
     output_dir: str | None = None,
-    **kwargs: dict[str, any],
+    **kwargs: dict[str, Any],
 ) -> None:
     """Retrieve CHIRPS precipitation data for a list of areas of interest and periods. This returns one monthly climatological
     xarray.Dataset object / netcdf file for each region and period.

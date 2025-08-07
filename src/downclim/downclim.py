@@ -9,13 +9,14 @@ from typing import Any
 import geopandas as gpd
 import yaml
 from importlib_resources import files
-from pydantic import BaseModel, Field, ValidationInfo, field_validator
+from pydantic import BaseModel, Field, ValidationInfo, field_validator, model_validator
+from typing_extensions import Self
 
 from .aoi import get_aoi
 from .dataset.chelsa2 import get_chelsa2
 from .dataset.chirps import get_chirps
-from .dataset.cmip6 import CMIP6Context, get_cmip6
-from .dataset.cordex import CORDEXContext, get_cordex
+from .dataset.cmip6 import CMIP6Context, get_cmip6, inspect_cmip6
+from .dataset.cordex import CORDEXContext, get_cordex, inspect_cordex
 from .dataset.gshtd import get_gshtd
 from .dataset.utils import Aggregation, DataProduct, Frequency
 from .downscale import DownscaleMethod, run_downscaling
@@ -27,99 +28,107 @@ class DownClimContext(BaseModel):
     """
 
     aoi: list[gpd.GeoDataFrame] = Field(
-        example=["Vanuatu"],
+        examples=["Vanuatu"],
         description="""Areas of interest to downscale data. Mandatory field.
-            Can be a string (name of the AOI),
-            a tuple of 5 floats (minx, miny, maxx, maxy, name),
-            a GeoDataFrame
-            or a list of any of these.""",
+            Can be :
+            - a string (name of the AOI),
+            - a tuple of 5 floats (minx, miny, maxx, maxy, name),
+            - a GeoDataFrame
+            - or a list of any of these.""",
     )
     variable: list[str] = Field(
         default=["tas", "pr"],
-        example=["pr", "tas", "tasmin", "tasmax"],
+        examples=["pr", ("tas", "tasmin", "tasmax")],
         description="Variables to downscale.",
     )
     time_frequency: Frequency = Field(
-        default="mon", example="mon", description="Time frequency of the data."
+        default=Frequency.MONTHLY,
+        examples=[Frequency.MONTHLY, "monthly"], # type: ignore[assignment]
+        description="Time frequency of the data."
     )
     downscaling_aggregation: Aggregation = Field(
-        default="monthly_mean",
-        example="monthly_mean",
+        default=Aggregation.MONTHLY_MEAN,
+        examples=[Aggregation.MONTHLY_MEAN,"monthly_mean"], # type: ignore[assignment]
         description="Aggregation method to build the climatology.",
     )
     baseline_product: DataProduct = Field(
-        default="chelsa2",
-        example="chelsa2",
+        default=DataProduct.CHELSA,
+        examples=[DataProduct.CHELSA, "chelsa2", "chirps", "gshtd"],
         description="Baseline product to use for downscaling.",
     )
-    evaluation_product: str | Iterable[str] | None = Field(
-        default=None,
-        example="chelsa2",
+    evaluation_product: list[DataProduct] = Field(
+        default=[DataProduct.CHELSA],
+        examples=["chelsa2", (DataProduct.CHIRPS, "gshtd")],
         description="Products to use for the evaluation period.",
     )
     downscaling_method: DownscaleMethod = Field(
-        default="bias_correction",
-        example="bias_correction",
+        default=DownscaleMethod.BIAS_CORRECTION,
+        examples=[DownscaleMethod.BIAS_CORRECTION, "bias_correction"],
         description="Downscaling method to use.",
     )
     use_cordex: bool = Field(
         default=True,
-        example=True,
+        examples=[True, False],
         description="Whether to use CORDEX data for scenarios to downscale.",
     )
     use_cmip6: bool = Field(
         default=True,
-        example=True,
+        examples=[True, False],
         description="Whether to use CMIP6 data for scenarios to downscale.",
     )
     cordex_context: CORDEXContext | None = Field(
         default=None,
-        example=CORDEXContext(domain="AUS-22", experiment="rcp85"),
+        examples=[CORDEXContext(domain=["AUS-22"], experiment=["historical", "rcp85"]),
+                  {"domain": ["AUS-22"], "experiment": ["historical", "rcp85"]}],
         description="CORDEXContext object to use for defining the CORDEX data required.",
     )
     cmip6_context: CMIP6Context | None = Field(
         default=None,
-        example=CMIP6Context(),
+        examples=[CMIP6Context(),
+                  {"experiment": ["historical", "ssp585"]}],
         description="CMIP6Context object to use for defining the CMIP6 data required.",
     )
     baseline_period: tuple[int, int] = Field(
         default=(1980, 2005),
-        example=(1980, 2005),
+        examples=[(1980, 2005)],
         description="Interval of years to use for the baseline period.",
     )
     evaluation_period: tuple[int, int] = Field(
         default=(2006, 2019),
-        example=(2006, 2019),
+        examples=[(2006, 2019)],
         description="Interval of years to use for the evaluation period.",
     )
     projection_period: tuple[int, int] = Field(
         default=(2071, 2100),
-        example=(2071, 2100),
+        examples=[(2071, 2100)],
         description="Interval of years to use for the projection period.",
     )
     nb_threads: int = Field(
         default=1,
-        example=4,
+        examples=[2, 4, 8],
         description="Number of threads to use for downloading and the computation (when available).",
     )
     memory_mb: int = Field(
         default=4096,
-        example=8192,
+        examples=[8192],
         description="Memory to use for downloading and the computation.",
     )
     chunks: dict[str, int] = Field(
         default={"time": 1, "lat": 1000, "lon": 1000},
-        example={"time": 1, "lat": 1000, "lon": 1000},
+        examples=[{"time": 1, "lat": 1000, "lon": 1000},
+                  {"time": 10, "lat": 100, "lon": 100}],
         description="Chunks to use for the computation.",
     )
     output_dir: str = Field(
         default="./results",
-        example="/my/output_dir/path/",
+        examples=["/my/output_dir/path/",
+                  "/another/output_dir/path/"],
         description="Output directory to save the results.",
     )
     tmp_dir: str = Field(
         default="./tmp",
-        example="/my/tmp_dir/path/",
+        examples=["/my/tmp_dir/path/",
+                  "/another/tmp_dir/path/"],
         description="Temporary directory when downloading and processing the data.",
     )
     keep_tmp_dir: bool = Field(
@@ -136,10 +145,12 @@ class DownClimContext(BaseModel):
     )
     esgf_credentials: dict[str, str] | None = Field(
         default=None,
-        example={
-            "openid": "https://esgf-node.ipsl.upmc.fr/esgf-idp/openid/my_user",
-            "password": "my_password",
-        },
+        examples=[
+            {
+                "openid": "https://esgf-node.ipsl.upmc.fr/esgf-idp/openid/my_user",
+                "password": "my_password",
+            }
+        ],
         description="""ESGF credentials to use for downloading the data.
             Can be either a dictionary with 'openid' and 'password' keys,
             or a path to a yaml file containing these 2 fields.""",
@@ -157,6 +168,19 @@ class DownClimContext(BaseModel):
         return v
 
     @classmethod
+    def parse_period(cls, v: str) -> tuple[int, int]:
+        """Parse a period string in the format 'YYYY-YYYY'."""
+        msg = """If you declare your time period as a string, it must be in the format 'YYYY-YYYY'.
+                Otherwise, declare it as a list or tuple of two integers."""
+        if "-" not in v:
+            raise ValueError(msg)
+        try:
+            start_year, end_year = map(int, v.split("-"))
+        except ValueError as e:
+            raise ValueError(msg) from e
+        return start_year, end_year
+
+    @classmethod
     def get_data_product(cls, v: str) -> DataProduct:
         match v:
             case "chelsa" | "chelsa2":
@@ -169,7 +193,7 @@ class DownClimContext(BaseModel):
                 msg = "Only CHELSA, CHIRPS or GSHTD can be used as a baseline product so far."
                 raise ValueError(msg)
 
-    @field_validator("aoi", mode="after")
+    @field_validator("aoi", mode="before")
     @classmethod
     def validate_aoi(
         cls,
@@ -184,36 +208,46 @@ class DownClimContext(BaseModel):
             return cls.to_list(v)
         return [str(var) for var in v]
 
-    @field_validator("time_frequency", mode="after")
+    @field_validator("time_frequency", mode="before")
     @classmethod
-    def validate_time_frequency(cls, v: str) -> Frequency:
-        if v.lower() in ("mon", "month", "monthly"):
-            return Frequency.MONTHLY
-        msg = "Only monthly frequency is available so far. Defaulting to 'mon'."
+    def validate_time_frequency(cls, v: str | Frequency) -> Frequency:
+        if isinstance(v, str) and v.lower() in ["mon", "month", "monthly"]:
+            return Frequency.MONTHLY  # type: ignore[return-value]
+        if isinstance(v, Frequency):
+            return v
+        msg = "Only monthly frequency is available so far."
         raise ValueError(msg)
 
     @field_validator("downscaling_aggregation", mode="after")
     @classmethod
-    def validate_downscaling_aggregation(cls, v: str) -> Aggregation:
-        if v.lower() in (
+    def validate_downscaling_aggregation(cls, v: str | Aggregation) -> Aggregation:
+        if isinstance(v, str) and v.lower() in [
+            "monthly mean",
             "monthly_mean",
             "monthly-mean",
             "monthly_means",
             "monthly-means",
-        ):
-            return Aggregation.MONTHLY_MEAN
+        ]:
+            return Aggregation.MONTHLY_MEAN  # type: ignore[return-value]
+        if isinstance(v, Aggregation):
+            return v
         msg = "Only monthly means aggregation is available so far. Defaulting to 'monthly_mean'."
         raise ValueError(msg)
 
-    @field_validator("baseline_product", mode="after")
+    @field_validator("baseline_product", mode="before")
     @classmethod
-    def validate_baseline_product(cls, v: str) -> DataProduct:
-        return cls.get_data_product(v.lower())
+    def validate_baseline_product(cls, v: str | DataProduct) -> DataProduct:
+        if isinstance(v, str):
+            return cls.get_data_product(v.lower())
+        if isinstance(v, DataProduct):
+            return v
+        msg = "Baseline product must be a string or a DataProduct."
+        raise ValueError(msg)
 
-    @field_validator("evaluation_product", mode="after")
+    @field_validator("evaluation_product", mode="before")
     @classmethod
-    def validate_evaluation_product(
-        cls, v: str | Iterable[str] | None, info: ValidationInfo
+    def validate_evaluation_product[T: (str, DataProduct)](
+        cls, v: T | Iterable[T] | None, info: ValidationInfo
     ) -> list[DataProduct]:
         if v is None:
             msg = "No evaluation products provided. Defaulting to the same product as baseline product."
@@ -221,97 +255,101 @@ class DownClimContext(BaseModel):
             return [info.data["baseline_product"]]
         if isinstance(v, str):
             return [cls.get_data_product(v.lower())]
+        if isinstance(v, DataProduct):
+            return [v]
         if isinstance(v, Iterable):
-            return [cls.get_data_product(p.lower()) for p in v]
+            return [cls.get_data_product(p.lower()) for p in v if isinstance(p, str)]
         msg = "Evaluation products must be a string or a list of strings that match the DataProducts available."
         raise ValueError(msg)
 
     @field_validator("downscaling_method", mode="after")
     @classmethod
-    def validate_downscaling_method(cls, v: str) -> DownscaleMethod:
-        match v.lower():
-            case "bias_correction" | "bias-correction":
-                return DownscaleMethod.BIAS_CORRECTION
-            case "quantile_mapping" | "quantile-mapping":
-                return DownscaleMethod.QUANTILE_MAPPING
-            case "dynamical":
-                return DownscaleMethod.DYNAMICAL
-            case _:
-                msg = "Only 'bias_correction', 'quantile_mapping' or 'dynamical' methods are available so far."
-                raise ValueError(msg)
+    def validate_downscaling_method(cls, v: str | DownscaleMethod) -> DownscaleMethod:
+        if isinstance(v, str):
+            match v.lower():
+                case "bias_correction" | "bias-correction":
+                    return DownscaleMethod.BIAS_CORRECTION
+                case "quantile_mapping" | "quantile-mapping":
+                    return DownscaleMethod.QUANTILE_MAPPING
+                case "dynamical":
+                    return DownscaleMethod.DYNAMICAL
+                case _:
+                    msg = "Only 'bias_correction', 'quantile_mapping' or 'dynamical' methods are available so far."
+                    raise ValueError(msg)
+        if isinstance(v, DownscaleMethod):
+            return v
+        msg = "Downscaling method must be a string or a DownscaleMethod."
+        raise ValueError(msg)
 
-    @field_validator("use_cordex", mode="after")
-    @classmethod
-    def check_cordex_coherency(cls, v: bool, info: ValidationInfo) -> bool:
-        if v and info.data["cordex_context"] is None:
+    @model_validator(mode="after")
+    def check_cordex_consistency(self) -> Self:
+        if self.use_cordex and self.cordex_context is None:
             msg = "cordex_context must be provided if use_cordex is True."
             raise ValueError(msg)
-        return v
+        return self
 
-    @field_validator("use_cmip6", mode="after")
-    @classmethod
-    def check_cmip6_coherency(cls, v: bool, info: ValidationInfo) -> bool:
-        if v and info.data["cmip6_context"] is None:
+    @model_validator(mode="after")
+    def check_cmip6_consistency(self) -> Self:
+        if self.use_cmip6 and self.cmip6_context is None:
             msg = "cmip6_context must be provided if use_cmip6 is True."
             raise ValueError(msg)
-        return v
+        return self
 
     @field_validator("cordex_context", mode="after")
     @classmethod
     def validate_cordex_context(
-        cls, v: CORDEXContext | dict[str, Any] | None, info: ValidationInfo
-    ) -> CORDEXContext | None:
-        if info.data["use_cordex"]:
-            if v is None:
-                msg = """'use_cordex' is set to True, however no cordex_context is provided.
-                Please correct to use a coherent context."""
-                raise ValueError(msg)
-            if isinstance(v, dict):
-                v = CORDEXContext.model_validate(v)
+        cls, v: CORDEXContext | dict[str, Any] | None
+    ) -> CORDEXContext:
+        if v is None:
+            msg = """'use_cordex' is set to True, however no cordex_context is provided.
+            Please correct to use a coherent context."""
+            raise ValueError(msg)
+        if isinstance(v, dict):
+            v = CORDEXContext.model_validate(v)
         return v
 
     @field_validator("cmip6_context", mode="after")
     @classmethod
     def validate_cmip6_context(
-        cls, v: CMIP6Context | dict[str, Any] | None, info: ValidationInfo
-    ) -> CMIP6Context | None:
-        if info.data["use_cmip6"]:
-            if v is None:
-                msg = """'use_cmip6' is set to True, however no cmip6_context is provided.
-                Please correct to use a coherent context."""
-                raise ValueError(msg)
-            if isinstance(v, dict):
-                v = CMIP6Context.model_validate(v)
-        return v
-
-    @field_validator("baseline_period", mode="after")
-    @classmethod
-    def check_baseline_periods(
-        cls, v: tuple[int, int], info: ValidationInfo
-    ) -> tuple[int, int]:
-        period = info.data["baseline_product"].period
-        if v[0] < period[0] or v[1] > period[1]:
-            msg = f"""Baseline period must be within the period of the baseline product.
-            The period of the baseline product is {period}."""
+        cls, v: CMIP6Context | dict[str, Any] | None
+    ) -> CMIP6Context:
+        if v is None:
+            msg = """'use_cmip6' is set to True, however no cmip6_context is provided.
+            Please correct to use a coherent context."""
             raise ValueError(msg)
+        if isinstance(v, dict):
+            v = CMIP6Context.model_validate(v)
         return v
 
-    @field_validator("evaluation_period", mode="after")
-    @classmethod
-    def check_evaluation_periods(
-        cls, v: tuple[int, int], info: ValidationInfo
-    ) -> tuple[int, int]:
-        for evaluation_product in info.data["evaluation_product"]:
-            period = evaluation_product.period
-            if v[0] < period[0] or v[1] > period[1]:
+    @model_validator(mode="after")
+    def check_periods_consistency(self) -> Self:
+        if self.baseline_period[0] < self.baseline_product.period[0] or self.baseline_period[1] > self.baseline_product.period[1]:
+            msg = f"""Baseline period must be within the period of the baseline product.
+            The period available for {self.baseline_product.product_name} is {self.baseline_product.period}."""
+            raise ValueError(msg)
+        for product in self.evaluation_product:
+            if self.evaluation_period[0] < product.period[0] or self.evaluation_period[1] > product.period[1]:
                 msg = f"""Evaluation period must be within the period of the evaluation product.
-                The period available for {evaluation_product.product_name} product is {period}."""
+                The period available for {product.product_name} product is {product.period}."""
                 raise ValueError(msg)
-        return v
+        return self
+
+    @field_validator("baseline_period", "evaluation_period", "projection_period", mode="after")
+    @classmethod
+    def check_periods(
+        cls, v: str | Iterable[int, int]
+    ) -> tuple[int, int]:
+        if isinstance(v, str):
+            v = cls.parse_period(v)
+        if not isinstance(v, Iterable) or len(v) != 2:
+            msg = """All periods must be defined as an iterable (tuple, list) of 2 integers (start year, end year),
+            or as a string in the format 'YYYY-YYYY'."""
+            raise ValueError(msg)
+        return tuple(v)
 
     @field_validator("projection_period", mode="after")
     @classmethod
-    def check_projection_periods(cls, v: tuple[int, int]) -> tuple[int, int]:
+    def check_projection_period(cls, v: Iterable[int, int]) -> tuple[int, int]:
         if v[0] <= 2015:
             msg = """Beginning of projection period must start in 2015 or after.
             This corresponds to the first year of the CMIP6 / CORDEX scenarios."""
@@ -320,7 +358,7 @@ class DownClimContext(BaseModel):
             msg = """End of projection period must end in 2100 or earlier.
             This corresponds to the last year of the CMIP6 / CORDEX scenarios."""
             raise ValueError(msg)
-        return v
+        return tuple(v)
 
     @field_validator("output_dir", "tmp_dir", mode="after")
     @classmethod
@@ -366,7 +404,7 @@ class DownClimContext(BaseModel):
         msg = "ESGF credentials must be a dictionary, a path to a yaml file or None."
         raise ValueError(msg)
 
-    def get_baseline_product(self) -> None:
+    def _get_baseline_product(self) -> None:
         """Get the baseline data for the DownClim context.
 
         This means that it downloads the baseline product for the baseline period and builds a climatology.
@@ -374,36 +412,41 @@ class DownClimContext(BaseModel):
         Returns:
             None: the baseline data files downloaded.
         """
+        print("Downloading baseline product...")
         if self.baseline_product is DataProduct.CHELSA:
             get_chelsa2(
                 aoi=self.aoi,
                 variable=self.variable,
-                baseline_period=self.baseline_period,
-                evaluation_period=self.evaluation_period,
+                period=self.baseline_period,
+                frequency=self.time_frequency,
+                aggregation=self.downscaling_aggregation,
+                nb_threads=self.nb_threads,
+                output_dir=self.output_dir,
+                tmp_dir=self.tmp_dir,
                 keep_tmp_dir=self.keep_tmp_dir,
             )
         elif self.baseline_product is DataProduct.CHIRPS:
             get_chirps(
                 aoi=self.aoi,
-                baseline_period=self.baseline_period,
-                evaluation_period=self.evaluation_period,
+                period=self.baseline_period,
                 time_frequency=self.time_frequency,
                 aggregation=self.downscaling_aggregation,
+                output_dir=self.output_dir,
             )
         elif self.baseline_product is DataProduct.GSHTD:
             get_gshtd(
                 aoi=self.aoi,
                 variable=self.variable,
-                baseline_period=self.baseline_period,
-                evaluation_period=self.evaluation_period,
+                period=self.baseline_period,
                 time_frequency=self.time_frequency,
                 aggregation=self.downscaling_aggregation,
-            )
+                output_dir=self.output_dir,
+                )
         else:
             msg = f"Unknown or not implemented data product '{self.baseline_product}'."
             raise ValueError(msg)
 
-    def get_evaluation_product(self) -> None:
+    def _get_evaluation_product(self) -> None:
         """Get the evaluation data for the DownClim context.
 
         This means that it downloads the evaluation product for the evaluation period and builds a climatology.
@@ -411,81 +454,91 @@ class DownClimContext(BaseModel):
         Returns:
             None: the evaluation data.
         """
-        if self.evaluation_product is DataProduct.CHELSA:
-            get_chelsa2(
-                aoi=self.aoi,
-                variable=self.variable,
-                year=self.baseline_period,
-                frequency=self.time_frequency,
-                aggregation=self.downscaling_aggregation,
-                nb_threads=self.nb_threads,
-                output_dir=self.output_dir,
-                keep_tmp_dir=self.keep_tmp_dir,
-            )
-        elif self.evaluation_product is DataProduct.CHIRPS:
-            get_chirps(
-                aoi=self.aoi,
-                baseline_period=self.baseline_period,
-                evaluation_period=self.evaluation_period,
-                time_frequency=self.time_frequency,
-                aggregation=self.downscaling_aggregation,
-            )
-        elif self.evaluation_product is DataProduct.GSHTD:
-            get_gshtd(
-                aoi=self.aoi,
-                variable=self.variable,
-                baseline_period=self.baseline_period,
-                evaluation_period=self.evaluation_period,
-                time_frequency=self.time_frequency,
-                aggregation=self.downscaling_aggregation,
-            )
-        else:
+        print("Downloading evaluation product...")
+        for product in self.evaluation_product:
+            if product is DataProduct.CHELSA:
+                get_chelsa2(
+                    aoi=self.aoi,
+                    variable=self.variable,
+                    period=self.evaluation_period,
+                    frequency=self.time_frequency,
+                    aggregation=self.downscaling_aggregation,
+                    nb_threads=self.nb_threads,
+                    output_dir=self.output_dir,
+                    tmp_dir=self.tmp_dir,
+                    keep_tmp_dir=self.keep_tmp_dir,
+                )
+            elif product is DataProduct.CHIRPS:
+                get_chirps(
+                    aoi=self.aoi,
+                    period=self.evaluation_period,
+                    time_frequency=self.time_frequency,
+                    aggregation=self.downscaling_aggregation,
+                    output_dir=self.output_dir,
+                    **self.esgf_credentials
+                )
+            elif product is DataProduct.GSHTD:
+                get_gshtd(
+                    aoi=self.aoi,
+                    variable=self.variable,
+                    period=self.evaluation_period,
+                    time_frequency=self.time_frequency,
+                    aggregation=self.downscaling_aggregation,
+                    output_dir=self.output_dir,
+                    **self.esgf_credentials
+                )
             msg = f"Unknown or not implemented data product '{self.evaluation_product}'."
             raise ValueError(msg)
 
 
-    def get_simulations(self) -> None:
+    def _get_simulations(self) -> None:
         """Get the simulations data for the DownClim context.
 
         Depending on the product chosen, this function will download either CMIP6 or CORDEX simulation,
         or both. It will download according to the CMIP6Context or CORDEXContext defined in the DownClimContext.
 
-        Args:
-            context (DownClimContext): the DownClim context previously defined
-            containing all the necessary information.
+        Parameters
+        ----------
+        self: DownClimContext
 
-        Returns:
-            None: the simulations data is downloaded.
+        Returns
+        -------
+        None: the simulations data is downloaded.
         """
+        print("Downloading simulations data...")
         if self.use_cmip6:
-            cmip6_context = self.cmip6_context
+            print("     Using CMIP6 simulations...")
+            cmip6_simulations = inspect_cmip6(
+                context=self.cmip6_context,
+            )
             get_cmip6(
                 aoi=self.aoi,
-                variable=cmip6_context.variable_id,
+                cmip6_simulations=cmip6_simulations,
                 baseline_period=self.baseline_period,
                 evaluation_period=self.evaluation_period,
                 projection_period=self.projection_period,
-                time_frequency=self.time_frequency,
                 aggregation=self.downscaling_aggregation,
-                activity=cmip6_context.activity_id,
-                institution=cmip6_context.institution_id,
-                source=cmip6_context.source_id,
-                experiment=cmip6_context.experiment_id,
-                member=cmip6_context.member_id,
-                table=cmip6_context.table_id,
-                grid_label=cmip6_context.grid_label,
-                baseline=self.baseline_product,
+                output_dir=self.output_dir,
+                chunks=self.chunks,
             )
         if self.use_cordex:
+            print("     Using CORDEX simulations...")
+            cordex_simulations = inspect_cordex(
+                context=self.cordex_context,
+                esgf_credential=self.esgf_credentials
+            )
             get_cordex(
-                aois=self.aoi,
-                variables=self.variable,
-                periods=self.projection_period,
-                institute=self.institute,
-                model=self.model,
-                experiment=self.experiment,
-                ensemble=self.ensemble,
-                baseline=self.baseline_product,
+                aoi=self.aoi,
+                cordex_simulations=cordex_simulations,
+                baseline_period=self.baseline_period,
+                evaluation_period=self.evaluation_period,
+                projection_period=self.projection_period,
+                aggregation=self.downscaling_aggregation,
+                output_dir=self.output_dir,
+                tmp_dir=self.tmp_dir,
+                nb_threads=self.nb_threads,
+                keep_tmp_dir=self.keep_tmp_dir,
+                esgf_credentials=self.esgf_credentials,
             )
         else:
             msg = (
@@ -493,27 +546,48 @@ class DownClimContext(BaseModel):
             )
             raise ValueError(msg)
 
+    def download_data(self) -> None:
+        """Downloads the data required defined in the DownClim context.
+
+        This includes the baseline product, evaluation product and simulations data.
+        It will download the data according to the DownClimContext defined.
+
+        Returns:
+            None: the data is downloaded in the output directory.
+        """
+        self._get_baseline_product()
+        self._get_evaluation_product()
+        self._get_simulations()
+
 
     def downscale(self) -> None:
-        """Runs the downscaling process with the current context."""
+        """Runs the downscaling process with the current context.
+
+        Parameters
+        ----------
+        self: DownClimContext
+
+        Returns
+        -------
+        None: the downscaling process is run and results are saved in the output directory.
+
+        """
         run_downscaling(
             aoi=self.aoi,
-            variable=self.variable,
             baseline_period=self.baseline_period,
             evaluation_period=self.evaluation_period,
             projection_period=self.projection_period,
             baseline_product=self.baseline_product,
+            cmip6_simulations_to_downscale=cmip6_simulations_to_downscale,
+            cordex_simulations_to_downscale=cordex_simulations_to_downscale,
+            reference_grid_file=reference_grid_file,
+            aggregation=self.downscaling_aggregation,
             method=self.downscaling_method,
-            use_cmip6=self.use_cmip6,
-            use_cordex=self.use_cordex,
-            cordex_context=self.cordex_context,
-            cmip6_context=self.cmip6_context,
-            intput_dir=self.output_dir,
-            output_dir=f"{self.output_dir}/downscaled",
+            input_dir=self.output_dir,
         )
 
 
-def generate_DownClimContext_template_file(output_file: str) -> None:
+def generate_DownClimContext_template_file(output_file: str) -> None: # pylint: disable=invalid-name
     """Generates a template file for DownClimContext.
     This is a pre-filled .yaml file with all the parameters available.
 
@@ -521,11 +595,11 @@ def generate_DownClimContext_template_file(output_file: str) -> None:
         output_file (str): File to save the template.
     """
     copyfile(
-        files("downclim.data").joinpath("DownClimContext_template.yaml"), output_file
+        files("downclim").parent.parent.joinpath("data", "DownClimContext_template.yaml"), output_file
     )
 
 
-def define_DownClimContext_from_file(file: str) -> DownClimContext:
+def define_DownClimContext_from_file(file: str) -> DownClimContext: # pylint: disable=invalid-name
     """Reads a DownClimContext from a file.
 
     Args:
@@ -541,20 +615,13 @@ def define_DownClimContext_from_file(file: str) -> DownClimContext:
     # Read YAML file
     try:
         with Path(file).open(encoding="utf-8") as f:
-            config = yaml.safe_load(f)
+            context = yaml.safe_load(f)
     except FileNotFoundError as e:
         msg = f"File {file} does not exist."
         raise FileNotFoundError(msg) from e
 
-    if not config.get("aoi"):
+    if not context.get("aoi"):
         msg = "Mandatory field 'aoi' is not present in the yaml file."
         raise ValueError(msg)
 
-    keys_years = ["baseline_period", "evaluation_period", "projection_period"]
-    for key in keys_years:
-        if key in config:
-            config[key] = tuple(
-                int(year) for year in config[key].strip("()").split(",")
-            )
-
-    return DownClimContext.model_validate(config)
+    return DownClimContext.model_validate(context)

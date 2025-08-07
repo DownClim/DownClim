@@ -13,3 +13,9 @@ pip install -e .
 This will install the package in editable mode, so you can make changes to the
 source code and see the changes reflected in your environment without having to
 reinstall the package.
+
+You can now use `DownClim` in your Python scripts or Jupyter notebooks using:
+
+```python
+import downclim
+```

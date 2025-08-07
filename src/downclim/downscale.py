@@ -19,6 +19,8 @@ class DownscaleMethod(Enum):
     """Class to define the downscaling methods available."""
 
     BIAS_CORRECTION = "bias_correction"
+    QUANTILE_MAPPING = "quantile_mapping"
+    DYNAMICAL = "dynamical"
 
     @classmethod
     def _missing_(cls, value: Any) -> None:

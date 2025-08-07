@@ -48,11 +48,30 @@ pygments_style = 'sphinx'
 
 autosummary_generate = True
 
+# Additional configuration for better cross-referencing
+autodoc_typehints = "description"
+autodoc_member_order = "bysource"
+
+# MyST configuration
+myst_heading_anchors = 3
+myst_url_schemes = ("http", "https", "mailto")
+
 html_theme = "furo"
 html_baseurl = "https://DownClim.github.io/DownClim/"
 
 myst_enable_extensions = [
     "colon_fence",
+    "deflist",
+    "dollarmath",
+    "fieldlist",
+    "html_admonition",
+    "html_image",
+    "linkify",
+    "replacements",
+    "smartquotes",
+    "strikethrough",
+    "substitution",
+    "tasklist",
 ]
 
 intersphinx_mapping = {
@@ -78,7 +97,7 @@ nbsphinx_prolog = r"""
     .. note::
 
         | This page was generated from `{{ docname }}`__.
-        | Interactive online version: :raw-html:`<a href="https://mybinder.org/v2/gh/geopandas/geopandas/main?urlpath=lab/tree/doc/source/{{ docname }}"><img alt="Binder badge" src="https://mybinder.org/badge_logo.svg" style="vertical-align:text-bottom"></a>`
+        | Interactive online version: :raw-html:`<a href="https://mybinder.org/v2/gh/DownClim/DownClim/main?urlpath=lab/tree/doc/{{ docname }}"><img alt="Binder badge" src="https://mybinder.org/badge_logo.svg" style="vertical-align:text-bottom"></a>`
 
-        __ https://github.com/geopandas/geopandas/blob/main/doc/source/{{ docname }}
+        __ https://github.com/DownClim/DownClim/blob/main/doc/{{ docname }}
 """

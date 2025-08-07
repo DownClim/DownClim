@@ -40,36 +40,38 @@ class CMIP6Context(BaseModel):
     """
 
     project: list[str] | None = Field(
-        default=("ScenarioMIP", "CMIP"),
-        example=["ScenarioMIP", "CMIP"],
+        default=["ScenarioMIP", "CMIP"],
+        examples=[["ScenarioMIP", "CMIP"], ("ScenarioMIP", "CMIP")],
         description="Name of the CMIP6 activity",
     )
     institute: list[str] | None = Field(
         default=None,
-        example=["IPSL", "NCAR"],
+        examples=[["IPSL", "NCAR"]],
         description="Institute name that produced the data.",
     )
     source: list[str] | None = Field(
         default=None,
-        example=["IPSL-CM6A-LR", "CMCC-CM2-HR4"],
+        examples=[["IPSL-CM6A-LR", "CMCC-CM2-HR4"]],
         description="Global climate model name",
     )
     experiment: list[str] | None = Field(
-        default=("ssp245", "historical"),
-        example=["ssp245", "historical"],
+        default=["ssp245", "historical"],
+        examples=[["ssp245", "historical"]],
         description="Name of the experiment type of the simulation",
     )
     ensemble: list[str] | None = Field(
-        default="r1i1p1f1", description="Ensemble member"
+        default=["r1i1p1f1"],
+        examples=["r1i1p1f1", ["r1i1p1f1", "r2i1p1f1"]],
+        description="Ensemble member"
     )
     frequency: Frequency = Field(
         default=Frequency.MONTHLY,
-        example="mon",
+        examples=[Frequency.MONTHLY, "mon"], # type: ignore[assignment]
         description="Time frequency of the data",
     )
     variable: list[str] | None = Field(
-        default=("tas", "pr"),
-        example=["tas", "tasmin", "tasmax", "pr"],
+        default=["tas", "pr"],
+        examples=[["tas", "tasmin", "tasmax", "pr"], "tas"],
         description="Variables name",
     )
     grid_label: str | None = Field(default=None, description="Grid label")
@@ -303,7 +305,7 @@ def get_cmip6(
     baseline_period: tuple[int, int] = (1980, 2005),
     evaluation_period: tuple[int, int] = (2006, 2019),
     projection_period: tuple[int, int] = (2071, 2100),
-    aggregation: Aggregation = Aggregation.MONTHLY_MEAN,
+    aggregation: Aggregation = Aggregation.MONTHLY_MEAN,  # type: ignore[assignment]
     output_dir: str | None = None,
     chunks: dict[str, int] | None = None,
 ) -> None:
