@@ -12,7 +12,7 @@ import xesmf as xe
 from .aoi import get_aoi_informations
 from .dataset.cmip6 import get_cmip6_context_from_filename
 from .dataset.cordex import get_cordex_context_from_filename
-from .dataset.utils import Aggregation, DataProduct
+from .dataset.utils import Aggregation, DataProduct, climatology_filename
 
 
 class DownscaleMethod(Enum):
@@ -62,14 +62,46 @@ def run_downscaling(
     evaluation_period: tuple[int, int],
     projection_period: tuple[int, int],
     baseline_product: DataProduct,
-    cmip6_simulations_to_downscale: list[str] | None,
-    cordex_simulations_to_downscale: list[str] | None,
+    cmip6_simulations_to_downscale: list[str] | None = None,
+    cordex_simulations_to_downscale: list[str] | None = None,
     reference_grid_file: str | None = None,
     aggregation: Aggregation = Aggregation.MONTHLY_MEAN,
     method: DownscaleMethod = DownscaleMethod.BIAS_CORRECTION,
-    input_dir: str = "./results",
+    input_dir: str | None = None,
     output_dir: str | None = None,
 ) -> None:
+    """
+    Run the downscaling process.
+
+    Args:
+        aoi (list[gpd.GeoDataFrame]): List of areas of interest.
+        baseline_period (tuple[int, int]): Baseline period (start, end).
+        evaluation_period (tuple[int, int]): Evaluation period (start, end).
+        projection_period (tuple[int, int]): Projection period (start, end).
+        baseline_product (DataProduct): Baseline product to use.
+        cmip6_simulations_to_downscale (list[str] | None): List of CMIP6 simulations to downscale. Defaults to None,
+        which means all available CMIP6 simulations in "<input_dir>".
+        cordex_simulations_to_downscale (list[str] | None): List of CORDEX simulations to downscale. Defaults to None,
+        which means all available CORDEX simulations in "<input_dir>".
+        reference_grid_file (str | None, optional): Path to the reference grid file. Defaults to None.
+        aggregation (Aggregation, optional): Aggregation method to use. Defaults to Aggregation.MONTHLY_MEAN.
+        method (DownscaleMethod, optional): Downscaling method to use. Defaults to DownscaleMethod.BIAS_CORRECTION.
+        input_dir (str, optional): Input directory for the data. Defaults to "./results".
+        output_dir (str | None, optional): Output directory for the results. Defaults to None.
+
+    Raises:
+        FileNotFoundError: If a required file is not found.
+        ValueError: If a required parameter is invalid.
+    """
+
+    # Check input directory
+    if input_dir is None:
+        msg = "Input directory not provided. Using default input directory './results'."
+        warn(msg, stacklevel=1)
+        input_dir = "./results/"
+    if not Path(input_dir).is_dir():
+        msg = f"Input directory {input_dir} not found."
+        raise FileNotFoundError(msg)
 
     # Create output directory
     if output_dir is None:
@@ -77,27 +109,44 @@ def run_downscaling(
         msg  = f"Output directory not provided. Using default output directory ${output_dir}."
         warn(msg, stacklevel=1)
     Path(output_dir).mkdir(parents=True, exist_ok=True)
-
-    if cmip6_simulations_to_downscale is None or cmip6_simulations_to_downscale == []:
-        msg = "No CMIP6 simulations to downscale provided."
-        warn(msg, stacklevel=1)
-    else:
-        Path(f"{output_dir}/cmip6").mkdir(parents=True, exist_ok=True)
-    if cordex_simulations_to_downscale is None or cordex_simulations_to_downscale == []:
-        msg = "No CORDEX simulations to downscale provided."
-        warn(msg, stacklevel=1)
-    else:
-        Path(f"{output_dir}/cordex").mkdir(parents=True, exist_ok=True)
+    Path(f"{output_dir}/cmip6").mkdir(parents=True, exist_ok=True)
+    Path(f"{output_dir}/cordex").mkdir(parents=True, exist_ok=True)
 
     # Get AOIs information
     aoi_name, _ = get_aoi_informations(aoi)
 
-    # Get the reference grid
-    reference_grid = xr.open_dataset(reference_grid_file)
-
     for aoi_n in aoi_name:
+        # Check and populate CMIP6 simulations if needed
+        if cmip6_simulations_to_downscale is None:
+            cmip6_simulations_to_downscale = [str(p) for p in Path(f"{input_dir}/cmip6").glob(f"{aoi_n}_cmip6*.nc")]
+            msg = f"CMIP6 simulations to downscale not provided. Using all files found in {input_dir}/cmip6."
+            warn(msg, stacklevel=1)
+        if cmip6_simulations_to_downscale == []:
+            msg = "No CMIP6 simulations to downscale found."
+            warn(msg, stacklevel=1)
+
+        # Check and populate CORDEX simulations if needed
+        if cordex_simulations_to_downscale is None:
+            cordex_simulations_to_downscale = [str(p) for p in Path(f"{input_dir}/cordex").glob(f"{aoi_n}_cordex*.nc")]
+            msg = f"""CORDEX simulations to downscale not provided. Using all files found in {input_dir}/cordex:
+                {cordex_simulations_to_downscale}"""
+            warn(msg, stacklevel=1)
+        if cordex_simulations_to_downscale == []:
+            msg = "No CORDEX simulations to downscale found."
+            warn(msg, stacklevel=1)
+
+        # Get the reference grid
+        if reference_grid_file is None:
+            reference_grid_file = f"{input_dir}/{baseline_product.product_name}/{aoi_n}_reference_grid.nc"
+            msg = f"Reference grid file not provided. Using default grid file {reference_grid_file} which is extracted from {baseline_product.product_name}."
+            warn(msg, stacklevel=1)
+        if not Path(reference_grid_file).is_file():
+            msg = f"Reference grid file {reference_grid_file} not found. Please provide a valid reference grid file."
+            raise FileNotFoundError(msg)
+        reference_grid = xr.open_dataset(reference_grid_file)
+
         # Get baseline historical data and interpolate on reference grid
-        baseline_file = f"{input_dir}/{baseline_product.product_name}/{aoi_n}_{baseline_product.product_name}_{aggregation.value}_{baseline_period[0]}-{baseline_period[1]}.nc"
+        baseline_file = climatology_filename(f"{input_dir}/{baseline_product.product_name}", aoi_n, baseline_product, aggregation, baseline_period)
         if not Path(baseline_file).is_file():
             msg = f"Baseline historical data not found for {aoi_n}. Please download it first."
             raise FileNotFoundError(msg)
@@ -130,7 +179,9 @@ def run_downscaling(
             ds_evaluation = xr.open_dataset(k)
             if v["data_product"] == DataProduct.CMIP6.product_name:
                 ds_projection_file = [f for f,d in cmip6_aoi_projection.items()
-                                      if d["institute"] == v["institute"] and d["source"] == v["source"] and d["ensemble"] == v["ensemble"]
+                                      if d["institute"] == v["institute"] and
+                                      d["source"] == v["source"] and
+                                      d["ensemble"] == v["ensemble"]
                                     ]
             else:
                 ds_projection_file = [f for f,d in cordex_aoi_projection.items()

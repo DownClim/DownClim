@@ -16,6 +16,7 @@ from .utils import (
     DataProduct,
     Frequency,
     VariableAttributes,
+    climatology_filename,
     get_monthly_climatology,
     get_monthly_mean,
     prep_dataset,
@@ -61,9 +62,17 @@ def _get_chirps_area_period(
 
     ic = ee.ImageCollection(DataProduct.CHIRPS.url).filterDate(dmin, dmax)
     geom = ee.Geometry.Rectangle(*aoi_bounds.to_numpy()[0])
+    if ic.size().getInfo() == 0:
+        msg = f"""
+                No data found for the period {dmin} - {dmax} and variable {variable}.
+                CHIRPS dataset is available from {DataProduct.CHIRPS.period[0]} to {DataProduct.CHIRPS.period[1]}.
+                """
+        raise ValueError(msg)
+
     ds = xr.open_mfdataset(
         [ic], engine="ee", projection=ic.first().select(0).projection(), geometry=geom
     )
+
     ds = ds.transpose("time", "lat", "lon")
     ds = ds.rename({"precipitation": "pr"})
     ds = prep_dataset(ds, DataProduct.CHIRPS)
@@ -141,7 +150,7 @@ def get_chirps(
     print("Downloading CHIRPS data...")
     for aoi_n, aoi_b in zip(aois_names, aois_bounds, strict=False):
         # First check if the data is already downloaded
-        output_file = f"{output_dir}/{aoi_n}_{data_product.product_name}_{aggregation.value}_{period[0]}-{period[1]}.nc"
+        output_file = climatology_filename(output_dir, aoi_n, data_product, aggregation, period)
         if Path(output_file).is_file():
             print(
                 f"""File {output_file} already exists, skipping...

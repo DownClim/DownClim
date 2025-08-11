@@ -7,6 +7,7 @@ from dataclasses import asdict
 from pathlib import Path
 from urllib.error import URLError
 from urllib.request import urlopen
+from warnings import warn
 
 import geopandas as gpd
 import pandas as pd
@@ -15,8 +16,17 @@ import xarray as xr
 from multiprocess import Pool
 
 from ..aoi import get_aoi_informations
-from .utils import (Aggregation, DataProduct, Frequency, VariableAttributes,
-                    get_monthly_climatology, prep_dataset, split_period)
+from .utils import (
+    Aggregation,
+    DataProduct,
+    Frequency,
+    VariableAttributes,
+    climatology_filename,
+    get_monthly_climatology,
+    prep_dataset,
+    save_reference_grid,
+    split_period,
+)
 
 
 def _get_chelsa2_one_file(
@@ -55,11 +65,15 @@ def _get_chelsa2_one_file(
         )
         raise URLError(msg) from e
 
-    ds = rio.open_rasterio(url).to_dataset("band").rename_vars({1: variable})
-    for aoi_n, aoi_b in zip(aoi_name, aoi_bound, strict=False):
-        chelsa_files[aoi_n] = ds.rio.clip_box(*aoi_b.to_numpy()[0]).assign_coords(time=datetime.datetime(year,month,1))
-    return chelsa_files
+    ##ds = rio.open_rasterio(url).to_dataset("band").rename_vars({1: variable})
+    ##for aoi_n, aoi_b in zip(aoi_name, aoi_bound, strict=False):
+    ##    chelsa_files[aoi_n] = ds.rio.clip_box(*aoi_b.to_numpy()[0]).assign_coords(time=datetime.datetime(year,month,1))
 
+    with rio.open_rasterio(url) as ds_rio:
+        for aoi_n, aoi_b in zip(aoi_name, aoi_bound, strict=False):
+            chelsa_files[aoi_n] = ds_rio.to_dataset("band").rename_vars({1: variable}).rio.clip_box(*aoi_b.to_numpy()[0]).assign_coords(time=datetime.datetime(year,month,1))
+
+    return chelsa_files
 
 def _get_chelsa2_year_var(
     aoi_name: list[str],
@@ -187,8 +201,6 @@ def get_chelsa2(
     aoi_name, aoi_bound = get_aoi_informations(aoi)
 
     # Get years to retrieve
-    #    periods = [baseline_period, evaluation_period]
-    #    years = set().union(*[list(range(period[0], period[1] + 1)) for period in periods])
     years = list(range(period[0], period[1] + 1))
 
     # Specific case for CHELSA "pr" data
@@ -202,39 +214,50 @@ def get_chelsa2(
         years.remove(2016)  # issue with the tif
 
     print("Downloading CHELSA data...")
-    # Actual data retrieval
-    paths = []
-    pool = Pool(nb_threads)
-    for var in variable:
-        paths.append(
-            pool.starmap_async(
-            #pool.starmap(
-                _get_chelsa2_year_var,
-                [
-                    (aoi_name, aoi_bound, year, var, frequency, tmp_dir)
-                    for year in years
-                ],
-            ).get()
-        )
-    pool.close()
-    paths2 = {
-        aoi_name: [p[aoi_name] for path in paths for p in path] for aoi_name in aoi_name
-    }
-    del paths
 
-    print("Merging files by aoi...")
-    # Merge files to get one file per aoi for all periods
+    # We first need to check if the files exist before downloading and processing data
+    # We update the list of AOIs to only include those that need to be processed
     for aoi_n in aoi_name:
-        # We first need to check if the files exist before processing data
-        output_filename = f"{output_dir}/{aoi_n}_{data_product.product_name}_{aggregation.value}_{period[0]}-{period[1]}.nc"
-        if not Path(output_filename).is_file():
-            # if not all files for aoi_n exist, we need to process the data
+        output_filename = climatology_filename(output_dir, aoi_n, data_product, aggregation, period)
+        if Path(output_filename).is_file():
+            msg = f"""
+            File for area {aoi_n} and period {period} already exists: {output_filename}.
+            No action is done for {aoi_n}.
+            Please make sure this is the expected behaviour.
+            Continue..."""
+            warn(msg, stacklevel=1)
+            aoi_name.remove(aoi_n)
+
+    # Actual data retrieval with update aois if needed
+    if aoi_name:
+        paths = []
+        pool = Pool(nb_threads)
+        for var in variable:
+            paths.append(
+                pool.starmap_async(
+                #pool.starmap(
+                    _get_chelsa2_year_var,
+                    [
+                        (aoi_name, aoi_bound, year, var, frequency, tmp_dir)
+                        for year in years
+                    ],
+                ).get()
+            )
+        pool.close()
+        paths2 = {
+            aoi_n: [p[aoi_n] for path in paths for p in path] for aoi_n in aoi_name
+        }
+        del paths
+
+        print("Merging files by aoi...")
+        # Merge files to get one file per aoi for the period
+        for aoi_n in aoi_name:
+            output_filename = climatology_filename(output_dir, aoi_n, data_product, aggregation, period)
             print("Merging files for area " + aoi_n + "...")
             ds_aoi_period = xr.open_mfdataset(
                 paths2[aoi_n], decode_coords="all", parallel=True
             )
             dmin, dmax = split_period(period)
-
             if aggregation == Aggregation.MONTHLY_MEAN:
                 ds_aoi_period_clim = get_monthly_climatology(
                     ds_aoi_period.sel(time=slice(dmin, dmax))
@@ -243,11 +266,8 @@ def get_chelsa2(
                 msg = "Currently only monthly-means aggregation available!"
                 raise ValueError(msg)
             ds_aoi_period_clim.to_netcdf(output_filename)
-        else:
-            print(
-                f"""File for area {aoi_n} and period {period} already exists. Not downloading.
-                Please make sure this is the expected behaviour"""
-            )
+
+            save_reference_grid(aoi_n, ds_aoi_period_clim, output_dir, data_product)
 
     if not keep_tmp_dir:
         shutil.rmtree(tmp_dir)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import warnings
 from collections.abc import Iterable
 from functools import lru_cache
@@ -23,6 +24,8 @@ from .utils import (
     prep_dataset,
     split_period,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class CMIP6Context(BaseModel):
@@ -304,7 +307,7 @@ def get_cmip6(
     cmip6_simulations: pd.DataFrame,
     baseline_period: tuple[int, int] = (1980, 2005),
     evaluation_period: tuple[int, int] = (2006, 2019),
-    projection_period: tuple[int, int] = (2071, 2100),
+    projection_period: tuple[int, int] | None = (2071, 2100),
     aggregation: Aggregation = Aggregation.MONTHLY_MEAN,  # type: ignore[assignment]
     output_dir: str | None = None,
     chunks: dict[str, int] | None = None,
@@ -320,8 +323,26 @@ def get_cmip6(
 
     Parameters
     ----------
+    aoi: list[gpd.GeoDataFrame]
+        List of GeoDataFrames defining the areas of interest.
     cmip6_simulations: pd.DataFrame
-        DataFrame containing the CMIP6 simulations to retrieve.
+        DataFrame containing the CMIP6 simulations to retrieve. Typically the output of the `list_available_simulations` method from the `CMIP6Context` class.
+    baseline_period: tuple[int, int]
+        Interval of years to use for the baseline period.
+    evaluation_period: tuple[int, int]
+        Interval of years to use for the evaluation period.
+    projection_period: tuple[int, int] | None
+        Interval of years to use for the projection period. If None, no projection period will be used (can be used if you need to do only evaluation)
+    aggregation: Aggregation
+        Aggregation method to use for aggregating the data.
+    output_dir: str | None
+        Directory to save the output files.
+    chunks: dict[str, int] | None
+        Chunking strategy to use for the data. Keys must be one / combination of "time", "lat", "lon".
+
+    Returns
+    -------
+    None
     """
 
     data_product = DataProduct.CMIP6
@@ -346,9 +367,14 @@ def get_cmip6(
         ["institute", "source", "ensemble", "experiment"]
     )
     for group_name, group in cmip6_simulations_grouped:
-        print(f"Getting CMIP6 data for {group_name}.")
+        logger.info("Preparing CMIP6 data for %s.", group_name)
         ds_group = []
         for _, row in group.iterrows():
+            # Todo
+            # First check if the final dataset already exists
+            # For a given time period, we need to check if ALL aoi are present;
+            # if this is not the case, then we need to download the data
+            # Todo
             mapper = gcfs.get_mapper(row.datanode)
             ds_group.append(
                 xr.open_zarr(mapper, consolidated=True).assign_coords(
@@ -371,28 +397,28 @@ def get_cmip6(
     for period_year, period_name in zip(periods_years, periods_names, strict=False):
         tmin, tmax = split_period(period_year)
         for aoi_n, aoi_b in zip(aois_names, aois_bounds, strict=False):
-            print(f"""Extracting CMIP6 data for {period_name} period, years {tmin} to {tmax},
-                  for the area of interest '{aoi_n}'.""")
+            logger.info("Extracting CMIP6 data for %s period, years %s to %s, for the area of interest '%s'.",
+                        period_name, tmin, tmax, aoi_n)
             # Extend the AOI to avoid edge effects
             aoi_b["minx"] -= 2
             aoi_b["miny"] -= 2
             aoi_b["maxx"] += 2
             aoi_b["maxy"] += 2
             for (institute, source, ensemble, experiment), ds in all_ds.items():
+                output_file = _get_filename_from_cmip6_context(
+                    output_dir, aoi_n, data_product, institute, source, experiment, ensemble, aggregation, tmin, tmax
+                )
+                if Path(output_file).is_file():
+                    logger.info("CMIP6 data for %s already exists.", output_file)
+                    continue
                 ds_period = ds.sel(time=slice(tmin, tmax))
                 if ds_period.sizes["time"] == 0:
                     continue
-                ds_aoi = ds_period.rio.write_crs("epsg:4326").rio.clip_box(
-                    *aoi_b.to_numpy()[0]
-                )
+                ds_aoi = ds_period.rio.write_crs("epsg:4326").rio.clip_box(*aoi_b.to_numpy()[0])
                 if aggregation != Aggregation.MONTHLY_MEAN:
                     msg = "Currently only monthly-means aggregation available!"
                     raise ValueError(msg)
                 ds_clim = get_monthly_climatology(ds_aoi)
-                output_file = _get_filename_from_cmip6_context(
-                    output_dir, aoi_n, data_product, institute, source, experiment, ensemble, aggregation, tmin, tmax
-                )
-                #output_file = f"{output_dir}/{aoi_n}_CMIP6_global_{institute}_{source}_{experiment}_{ensemble}_{aggregation.value}_{tmin}_{tmax}.nc"
                 ds_clim.to_netcdf(output_file)
 
 

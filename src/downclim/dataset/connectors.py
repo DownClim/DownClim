@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 import ee
 import gcsfs
@@ -24,26 +23,29 @@ ee_image_collection = {
 }
 
 
-def connect_to_ee(**kwargs: dict[str, Any]) -> None:
+def connect_to_ee(ee_project: str | None = None) -> None:
     """
     Connect to Google Earth Engine using the `earthengine-highvolume`.
 
     Parameters
     ----------
-    **kwargs: dict
-        Keyword arguments to pass to `ee.Initialize()`.
+    ee_project: str | None
+        Earth Engine project ID to use for the download.
     """
-    if not ee.data._credentials:
+    try:
+        # Try to get project config to check if already authenticated
+        project_config = ee.data.getProjectConfig()
+        print(f"Already connected to Earth Engine with project '{project_config['name'].split('/')[1]}'.")
+    except ee.EEException:
         print("""You are not logged in to Earth Engine.
               Authenticating to Earth Engine...""")
         try:
-            ee.Initialize(opt_url='https://earthengine-highvolume.googleapis.com', **kwargs)
+            ee.Authenticate()
+            ee.Initialize(opt_url='https://earthengine-highvolume.googleapis.com', project=ee_project)
             print("Successfully connected to Earth Engine.")
         except Exception as e:
             print(f"An error occurred: {e}")
             print("Please provide a 'project' when connecting to Earth Engine.")
-    else:
-        print(f"Already connected to Earth Engine with project '{ee.data.getProjectConfig()['name'].split('/')[1]}'.")
 
 def connect_to_gcfs(token: str = "anon") -> gcsfs.GCSFileSystem:
     """

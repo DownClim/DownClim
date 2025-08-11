@@ -1,15 +1,18 @@
 from __future__ import annotations
 
+import os
 from dataclasses import asdict, dataclass
 from datetime import datetime as dt
 from enum import Enum
+from pathlib import Path
 from typing import Any
 
 import numpy as np
 import xarray as xr
 from aenum import MultiValueEnum
 
-
+# GDAL configuration to avoid EPSG:4326 warnings
+os.environ["GTIFF_SRS_SOURCE"] = "EPSG"
 class Frequency(MultiValueEnum):
     """Class to define the frequency of the data handled.
     Usually 'daily | monthly | annualy'.
@@ -59,6 +62,7 @@ class DataProductProperties:
         period (tuple[int, int]): period of the data product in the format (begin_year, end_year).
         scale_factor (dict[str, float]): scale factor for each variable in the data product.
         add_offset (dict[str, float]): add offset for each variable in the data product.
+        lon_lat_names (dict[str, str]): longitude and latitude variable names.
         url (str): url to download the data product.
             If the data is stored on earthengine, provides the image collection path instead.
 
@@ -68,6 +72,7 @@ class DataProductProperties:
     period: tuple[int, int]
     scale_factor: dict[str, float]
     add_offset: dict[str, float]
+    lon_lat_names: dict[str, str]
     url: str
 
 
@@ -83,9 +88,10 @@ class DataProduct(DataProductProperties, Enum):
 
     CHELSA = (
         "chelsa",
-        (1980, 2019),
+        (1979, 2018),
         {"pr": 0.1, "tas": 0.1, "tasmin": 0.1, "tasmax": 0.1},
         {"pr": 0, "tas": -273.15, "tasmin": -273.15, "tasmax": -273.15},
+        {"lon": "x", "lat": "y"},
         "https://os.zhdk.cloud.switch.ch/chelsav2/GLOBAL",
     )
     CMIP6 = (
@@ -93,6 +99,7 @@ class DataProduct(DataProductProperties, Enum):
         (1850, 2100),
         {"pr": 60 * 60 * 24, "tas": 1, "tasmin": 1, "tasmax": 1},
         {"pr": 0, "tas": -273.15, "tasmin": -273.15, "tasmax": -273.15},
+        {"lon": "lon", "lat": "lat"},
         "https://storage.googleapis.com/cmip6/cmip6-zarr-consolidated-stores.csv",
     )
     CORDEX = (
@@ -100,6 +107,7 @@ class DataProduct(DataProductProperties, Enum):
         (1850, 2100),
         {"pr": 60 * 60 * 24, "tas": 1, "tasmin": 1, "tasmax": 1},
         {"pr": 0, "tas": -273.15, "tasmin": -273.15, "tasmax": -273.15},
+        {"lon": "lon", "lat": "lat"},
         "https://esgf-node.ipsl.upmc.fr/esg-search",
     )
     GSHTD = (
@@ -107,9 +115,10 @@ class DataProduct(DataProductProperties, Enum):
         (2001, 2020),
         {"tas": 0.02, "tasmin": 0.02, "tasmax": 0.02},
         {"tas": -273.15, "tasmin": -273.15, "tasmax": -273.15},
+        {"lon": "lon", "lat": "lat"},
         "projects/sat-io/open-datasets/GSHTD/",
     )
-    CHIRPS = "chirps", (1980, 2024), {"pr": 1}, {"pr": 0}, "UCSB-CHG/CHIRPS/DAILY"
+    CHIRPS = "chirps", (1980, 2024), {"pr": 1}, {"pr": 0}, {"lon": "lon", "lat": "lat"}, "UCSB-CHG/CHIRPS/DAILY"
 
 
 @dataclass
@@ -243,3 +252,41 @@ def get_monthly_climatology(ds: xr.Dataset) -> xr.Dataset:
     """
 
     return ds.groupby("time.month").mean("time")
+
+def climatology_filename(outputdir: str, aoi_name: str, dataproduct: DataProduct, aggregation: Aggregation, period: tuple[int, int]) -> str:
+    """
+    Generate the filename for the climatology dataset.
+
+    Parameters
+    ----------
+    outputdir: str
+        Output directory for the results.
+    aoi_name: str
+        Name of the area of interest.
+    dataproduct: DataProduct
+        Data product type.
+    aggregation: Aggregation
+        Aggregation method.
+    period: tuple[int, int]
+        Period for the climatology dataset.
+
+    Returns
+    -------
+    str
+        Generated filename for the climatology dataset.
+    """
+    return f"{outputdir}/{aoi_name}_{dataproduct.product_name}_{aggregation.value}_{period[0]}-{period[1]}.nc"
+
+def save_reference_grid(aoi: str, ds: xr.Dataset, output_dir: str, data_product: DataProduct) -> None:
+    """Save the reference grid for a given data product.
+
+    Args:
+        aoi (str): The area of interest.
+        ds (xr.Dataset): The dataset containing the reference grid.
+        output_dir (str): The directory where the reference grid should be saved.
+        data_product (DataProduct): The data product for which to save the reference grid.
+    """
+    if not Path(f"{output_dir}/{aoi}_reference_grid.nc").is_file():
+        ds[[data_product.lon_lat_names['lon'], data_product.lon_lat_names['lat']]]. \
+            rename({data_product.lon_lat_names['lon']:'lon', data_product.lon_lat_names['lat']:'lat'}). \
+            to_netcdf(f"{output_dir}/{aoi}_reference_grid.nc")

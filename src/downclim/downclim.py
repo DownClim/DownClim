@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import warnings
 from collections.abc import Iterable
 from pathlib import Path
@@ -15,12 +16,14 @@ from typing_extensions import Self
 from .aoi import get_aoi
 from .dataset.chelsa2 import get_chelsa2
 from .dataset.chirps import get_chirps
-from .dataset.cmip6 import CMIP6Context, get_cmip6, inspect_cmip6
+from .dataset.cmip6 import CMIP6Context, get_cmip6
 from .dataset.cordex import CORDEXContext, get_cordex, inspect_cordex
 from .dataset.gshtd import get_gshtd
 from .dataset.utils import Aggregation, DataProduct, Frequency
 from .downscale import DownscaleMethod, run_downscaling
 
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.DEBUG)
 
 class DownClimContext(BaseModel):
     """Class to define the general context for the Downclim package.
@@ -246,8 +249,8 @@ class DownClimContext(BaseModel):
 
     @field_validator("evaluation_product", mode="before")
     @classmethod
-    def validate_evaluation_product[T: (str, DataProduct)](
-        cls, v: T | Iterable[T] | None, info: ValidationInfo
+    def validate_evaluation_product(
+        cls, v: str | DataProduct | Iterable[str] | Iterable[DataProduct] | None, info: ValidationInfo
     ) -> list[DataProduct]:
         if v is None:
             msg = "No evaluation products provided. Defaulting to the same product as baseline product."
@@ -323,9 +326,10 @@ class DownClimContext(BaseModel):
 
     @model_validator(mode="after")
     def check_periods_consistency(self) -> Self:
-        if self.baseline_period[0] < self.baseline_product.period[0] or self.baseline_period[1] > self.baseline_product.period[1]:
+        product = self.baseline_product
+        if self.baseline_period[0] < product.period[0] or self.baseline_period[1] > product.period[1]:
             msg = f"""Baseline period must be within the period of the baseline product.
-            The period available for {self.baseline_product.product_name} is {self.baseline_product.period}."""
+            The period available for {product.product_name} is {self.baseline_product.period}."""
             raise ValueError(msg)
         for product in self.evaluation_product:
             if self.evaluation_period[0] < product.period[0] or self.evaluation_period[1] > product.period[1]:
@@ -412,7 +416,7 @@ class DownClimContext(BaseModel):
         Returns:
             None: the baseline data files downloaded.
         """
-        print("Downloading baseline product...")
+        logger.info("Downloading baseline product...")
         if self.baseline_product is DataProduct.CHELSA:
             get_chelsa2(
                 aoi=self.aoi,
@@ -421,8 +425,8 @@ class DownClimContext(BaseModel):
                 frequency=self.time_frequency,
                 aggregation=self.downscaling_aggregation,
                 nb_threads=self.nb_threads,
-                output_dir=self.output_dir,
-                tmp_dir=self.tmp_dir,
+                output_dir=f"{self.output_dir}/{self.baseline_product.product_name}",
+                tmp_dir=f"{self.tmp_dir}/{self.baseline_product.product_name}",
                 keep_tmp_dir=self.keep_tmp_dir,
             )
         elif self.baseline_product is DataProduct.CHIRPS:
@@ -431,7 +435,7 @@ class DownClimContext(BaseModel):
                 period=self.baseline_period,
                 time_frequency=self.time_frequency,
                 aggregation=self.downscaling_aggregation,
-                output_dir=self.output_dir,
+                output_dir=f"{self.output_dir}/{self.baseline_product.product_name}",
             )
         elif self.baseline_product is DataProduct.GSHTD:
             get_gshtd(
@@ -440,10 +444,10 @@ class DownClimContext(BaseModel):
                 period=self.baseline_period,
                 time_frequency=self.time_frequency,
                 aggregation=self.downscaling_aggregation,
-                output_dir=self.output_dir,
+                output_dir=f"{self.output_dir}/{self.baseline_product.product_name}",
                 )
         else:
-            msg = f"Unknown or not implemented data product '{self.baseline_product}'."
+            msg = f"Unknown or not implemented data product '{self.baseline_product.product_name}'."
             raise ValueError(msg)
 
     def _get_evaluation_product(self) -> None:
@@ -454,7 +458,7 @@ class DownClimContext(BaseModel):
         Returns:
             None: the evaluation data.
         """
-        print("Downloading evaluation product...")
+        logger.info("Downloading evaluation product...")
         for product in self.evaluation_product:
             if product is DataProduct.CHELSA:
                 get_chelsa2(
@@ -464,8 +468,8 @@ class DownClimContext(BaseModel):
                     frequency=self.time_frequency,
                     aggregation=self.downscaling_aggregation,
                     nb_threads=self.nb_threads,
-                    output_dir=self.output_dir,
-                    tmp_dir=self.tmp_dir,
+                    output_dir=f"{self.output_dir}/{self.evaluation_product.product_name}",
+                    tmp_dir=f"{self.tmp_dir}/{self.evaluation_product.product_name}",
                     keep_tmp_dir=self.keep_tmp_dir,
                 )
             elif product is DataProduct.CHIRPS:
@@ -474,8 +478,8 @@ class DownClimContext(BaseModel):
                     period=self.evaluation_period,
                     time_frequency=self.time_frequency,
                     aggregation=self.downscaling_aggregation,
-                    output_dir=self.output_dir,
-                    **self.esgf_credentials
+                    output_dir=f"{self.output_dir}/{self.evaluation_product.product_name}",
+                    ee_project=self.ee_project
                 )
             elif product is DataProduct.GSHTD:
                 get_gshtd(
@@ -484,11 +488,12 @@ class DownClimContext(BaseModel):
                     period=self.evaluation_period,
                     time_frequency=self.time_frequency,
                     aggregation=self.downscaling_aggregation,
-                    output_dir=self.output_dir,
-                    **self.esgf_credentials
+                    output_dir=f"{self.output_dir}/{self.evaluation_product.product_name}",
+                    ee_project=self.ee_project
                 )
-            msg = f"Unknown or not implemented data product '{self.evaluation_product}'."
-            raise ValueError(msg)
+            else:
+                msg = f"Unknown or not implemented data product '{self.evaluation_product.product_name}'."
+                raise ValueError(msg)
 
 
     def _get_simulations(self) -> None:
@@ -505,12 +510,10 @@ class DownClimContext(BaseModel):
         -------
         None: the simulations data is downloaded.
         """
-        print("Downloading simulations data...")
+        logger.info("Downloading simulations data...")
         if self.use_cmip6:
-            print("     Using CMIP6 simulations...")
-            cmip6_simulations = inspect_cmip6(
-                context=self.cmip6_context,
-            )
+            logger.info("     Downloading CMIP6 simulations...")
+            cmip6_simulations = self.cmip6_context.list_available_simulations()
             get_cmip6(
                 aoi=self.aoi,
                 cmip6_simulations=cmip6_simulations,
@@ -518,11 +521,11 @@ class DownClimContext(BaseModel):
                 evaluation_period=self.evaluation_period,
                 projection_period=self.projection_period,
                 aggregation=self.downscaling_aggregation,
-                output_dir=self.output_dir,
+                output_dir=f"{self.output_dir}/cmip6",
                 chunks=self.chunks,
             )
         if self.use_cordex:
-            print("     Using CORDEX simulations...")
+            logger.info("     Downloading CORDEX simulations...")
             cordex_simulations = inspect_cordex(
                 context=self.cordex_context,
                 esgf_credential=self.esgf_credentials
@@ -534,17 +537,12 @@ class DownClimContext(BaseModel):
                 evaluation_period=self.evaluation_period,
                 projection_period=self.projection_period,
                 aggregation=self.downscaling_aggregation,
-                output_dir=self.output_dir,
+                output_dir=f"{self.output_dir}/cordex",
                 tmp_dir=self.tmp_dir,
                 nb_threads=self.nb_threads,
                 keep_tmp_dir=self.keep_tmp_dir,
                 esgf_credentials=self.esgf_credentials,
             )
-        else:
-            msg = (
-                f"Unknown or not implemented data product '{self.simulations_product}'."
-            )
-            raise ValueError(msg)
 
     def download_data(self) -> None:
         """Downloads the data required defined in the DownClim context.
@@ -555,17 +553,35 @@ class DownClimContext(BaseModel):
         Returns:
             None: the data is downloaded in the output directory.
         """
+        logger.info("Starting data download...")
+        logger.info("   Downloading baseline product...")
         self._get_baseline_product()
+        logger.info("   Downloading evaluation product...")
         self._get_evaluation_product()
+        logger.info("   Downloading simulations...")
         self._get_simulations()
+        logger.info("Data download complete.")
 
 
-    def downscale(self) -> None:
+    def downscale(
+        self,
+        cmip6_simulations_to_downscale: list[str] | None = None,
+        cordex_simulations_to_downscale: list[str] | None = None,
+        reference_grid_file: str | None = None,
+    ) -> None:
         """Runs the downscaling process with the current context.
 
         Parameters
         ----------
         self: DownClimContext
+        cmip6_simulations_to_downscale: list[str] | None
+            List of paths to CMIP6 simulations to downscale. If None, uses all files from
+            self.output_dir/cmip6. Defaults to None.
+        cordex_simulations_to_downscale: list[str] | None
+            List of paths to CORDEX simulations to downscale. If None, uses all files from
+            self.output_dir/cordex. Defaults to None.
+        reference_grid_file: str | None
+            Path to the reference grid file used to regrid the data. If None, will use the grid file from the baseline product.
 
         Returns
         -------

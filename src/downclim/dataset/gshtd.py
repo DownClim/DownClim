@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any
 
 import ee
 import geopandas as gpd
@@ -16,9 +16,11 @@ from .utils import (
     DataProduct,
     Frequency,
     VariableAttributes,
+    climatology_filename,
     get_monthly_climatology,
     get_monthly_mean,
     prep_dataset,
+    save_reference_grid,
     split_period,
 )
 
@@ -43,6 +45,13 @@ def _get_gshtd_single(
     collection = {"tas": "TMEAN", "tasmin": "TMIN", "tasmax": "TMAX"}
     ic = ee.ImageCollection(DataProduct.GSHTD.url + collection[variable]).filterDate(dmin, dmax)
     geom = ee.Geometry.Rectangle(*aoi_bounds.to_numpy()[0])
+    if ic.size().getInfo() == 0:
+        msg = f"""
+                No data found for the period {dmin} - {dmax} and variable {variable}.
+                GSHTD dataset is available from {DataProduct.GSHTD.period[0]} to {DataProduct.GSHTD.period[1]}.
+                """
+        raise ValueError(msg)
+
     ds = xr.open_dataset(
         ic, engine="ee", projection=ic.first().select(0).projection(), geometry=geom
     )
@@ -70,12 +79,12 @@ def _get_gshtd_single(
 # code
 def get_gshtd(
     aoi: list[gpd.GeoDataFrame],
-    variable: list[str] = ("tas", "tasmin", "tasmax"),
-    period: tuple[int, int] = (1980, 2005),
+    variable: Iterable[str] = ("tas", "tasmin", "tasmax"),
+    period: Iterable[int, int] = (2015, 2018),
     time_frequency: Frequency = Frequency.MONTHLY,
     aggregation: Aggregation = Aggregation.MONTHLY_MEAN,
     output_dir: str | None = None,
-    **kwargs: dict[str, Any],
+    ee_project: str | None = None,
 ) -> None:
     """
     Get GSHTD data (https://gee-community-catalog.org/projects/gshtd/)
@@ -102,8 +111,8 @@ def get_gshtd(
     output_dir: str, optional
         Output directory where the GSHTD climatology will be stored.
         Defaults to "./results/gshtd".
-    **kwargs: Any, optional
-        Dictionary containing the connection parameters to the Earth Engine API.
+    ee_project: str | None = None,
+        Earth Engine project ID to use for the download.
 
     Returns
     -------
@@ -120,13 +129,13 @@ def get_gshtd(
     # Get AOIs information
     aoi_name, aoi_bound = get_aoi_informations(aoi)
 
-    connect_to_ee(**kwargs)
+    connect_to_ee(ee_project=ee_project)
 
     print("Downloading GSHTD data...")
     for aoi_n, aoi_b in zip(aoi_name, aoi_bound, strict=False):
         # First check if the data is already downloaded
         output_file = (
-            f"{output_dir}/{aoi_n}_{data_product.product_name}_{aggregation.value}_{period[0]}-{period[1]}.nc"
+            climatology_filename(output_dir, aoi_n, data_product, aggregation, tuple(period))
         )
         if Path(output_file).is_file():
             print(
@@ -136,8 +145,10 @@ def get_gshtd(
             continue
         ds = xr.merge(
             [
-                _get_gshtd_single(aoi_b, aoi_n, var, period, time_frequency, aggregation)
+                _get_gshtd_single(aoi_b, aoi_n, var, tuple(period), time_frequency, aggregation)
                 for var in variable
             ]
         )
         ds.to_netcdf(output_file)
+
+        save_reference_grid(aoi_n, ds, output_dir, data_product)
