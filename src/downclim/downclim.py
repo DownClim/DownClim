@@ -591,7 +591,6 @@ class DownClimContext(BaseModel):
         run_downscaling(
             aoi=self.aoi,
             baseline_period=self.baseline_period,
-            evaluation_period=self.evaluation_period,
             projection_period=self.projection_period,
             baseline_product=self.baseline_product,
             cmip6_simulations_to_downscale=cmip6_simulations_to_downscale,

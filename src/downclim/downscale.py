@@ -12,7 +12,7 @@ import xesmf as xe
 from .aoi import get_aoi_informations
 from .dataset.cmip6 import get_cmip6_context_from_filename
 from .dataset.cordex import get_cordex_context_from_filename
-from .dataset.utils import Aggregation, DataProduct, climatology_filename
+from .dataset.utils import Aggregation, DataProduct, climatology_filename, get_grid
 
 
 class DownscaleMethod(Enum):
@@ -30,28 +30,28 @@ class DownscaleMethod(Enum):
 
 def bias_correction(
     baseline: xr.Dataset,
-    evaluation: xr.Dataset,
+    historical: xr.Dataset,
     projection: xr.Dataset
 ) -> xr.Dataset:
     """Bias correction of the projections.
 
     Args:
-        baseline (xr.Dataset): Baseline period.
-        evaluation (xr.Dataset): Evaluation period.
-        projection (xr.Dataset): Projection period.
+        baseline (xr.Dataset): Baseline product dataset.
+        historical (xr.Dataset): Historical period dataset.
+        projection (xr.Dataset): Projection period dataset.
 
     Returns:
         xr.Dataset: Bias corrected projections.
     """
 
-    # Compute anomalies between projection and evaluation
-    anomalies = projection - evaluation
+    # Compute anomalies between projection and historical
+    anomalies = projection - historical
     # Add anomalies to the baseline
     projection = baseline + anomalies
+
     if "pr" in projection:
-        anomalies_rel = (projection - evaluation) / (evaluation + 1)
-        anomalies["pr"] = anomalies_rel["pr"]
-        projection = baseline * (1 + anomalies)
+        rel_anomalies_pr = anomalies["pr"] / (historical["pr"] + 1)
+        projection["pr"] = baseline["pr"] * (1 + rel_anomalies_pr)
 
     return projection
 
@@ -59,7 +59,6 @@ def bias_correction(
 def run_downscaling(
     aoi: list[gpd.GeoDataFrame],
     baseline_period: tuple[int, int],
-    evaluation_period: tuple[int, int],
     projection_period: tuple[int, int],
     baseline_product: DataProduct,
     cmip6_simulations_to_downscale: list[str] | None = None,
@@ -76,7 +75,6 @@ def run_downscaling(
     Args:
         aoi (list[gpd.GeoDataFrame]): List of areas of interest.
         baseline_period (tuple[int, int]): Baseline period (start, end).
-        evaluation_period (tuple[int, int]): Evaluation period (start, end).
         projection_period (tuple[int, int]): Projection period (start, end).
         baseline_product (DataProduct): Baseline product to use.
         cmip6_simulations_to_downscale (list[str] | None): List of CMIP6 simulations to downscale. Defaults to None,
@@ -106,7 +104,7 @@ def run_downscaling(
     # Create output directory
     if output_dir is None:
         output_dir = "./results/downscaled"
-        msg  = f"Output directory not provided. Using default output directory ${output_dir}."
+        msg  = f"Output directory not provided. Using default output directory {output_dir}."
         warn(msg, stacklevel=1)
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     Path(f"{output_dir}/cmip6").mkdir(parents=True, exist_ok=True)
@@ -128,8 +126,7 @@ def run_downscaling(
         # Check and populate CORDEX simulations if needed
         if cordex_simulations_to_downscale is None:
             cordex_simulations_to_downscale = [str(p) for p in Path(f"{input_dir}/cordex").glob(f"{aoi_n}_cordex*.nc")]
-            msg = f"""CORDEX simulations to downscale not provided. Using all files found in {input_dir}/cordex:
-                {cordex_simulations_to_downscale}"""
+            msg = f"CORDEX simulations to downscale not provided. Using all files found in {input_dir}/cordex."
             warn(msg, stacklevel=1)
         if cordex_simulations_to_downscale == []:
             msg = "No CORDEX simulations to downscale found."
@@ -137,7 +134,7 @@ def run_downscaling(
 
         # Get the reference grid
         if reference_grid_file is None:
-            reference_grid_file = f"{input_dir}/{baseline_product.product_name}/{aoi_n}_reference_grid.nc"
+            reference_grid_file = f"{input_dir}/{baseline_product.product_name}/{baseline_product.product_name}_{aoi_n}_grid.nc"
             msg = f"Reference grid file not provided. Using default grid file {reference_grid_file} which is extracted from {baseline_product.product_name}."
             warn(msg, stacklevel=1)
         if not Path(reference_grid_file).is_file():
@@ -145,23 +142,28 @@ def run_downscaling(
             raise FileNotFoundError(msg)
         reference_grid = xr.open_dataset(reference_grid_file)
 
-        # Get baseline historical data and interpolate on reference grid
+        # Get baseline historical data and interpolate on reference grid (if needed)
         baseline_file = climatology_filename(f"{input_dir}/{baseline_product.product_name}", aoi_n, baseline_product, aggregation, baseline_period)
         if not Path(baseline_file).is_file():
             msg = f"Baseline historical data not found for {aoi_n}. Please download it first."
             raise FileNotFoundError(msg)
         ds_baseline = xr.open_dataset(baseline_file)
-        regridder = xe.Regridder(ds_baseline, reference_grid, "bilinear")
-        ds_baseline_reggrided = regridder(ds_baseline, keep_attrs=True)
+        baseline_grid = get_grid(ds_baseline, baseline_product)
+        if baseline_grid.equals(reference_grid):
+            ds_baseline_reggrided = ds_baseline
+            ds_baseline_reggrided = ds_baseline_reggrided.rename({baseline_product.lon_lat_names['lon']:'lon', baseline_product.lon_lat_names['lat']:'lat'})
+        else:
+            regridder = xe.Regridder(ds_baseline, reference_grid, "bilinear")
+            ds_baseline_reggrided = regridder(ds_baseline, keep_attrs=True)
 
-        # Get evaluation data
-        cmip6_aoi_evaluation = {k:v
+        # Get historical data
+        cmip6_aoi_historical = {k:v
             for k,v in {file:get_cmip6_context_from_filename(file) for file in cmip6_simulations_to_downscale}.items()
-            if aoi_n == v["aoi_n"] and evaluation_period[0] == int(v["tmin"][:4]) and evaluation_period[1] == int(v["tmax"][:4])
+            if aoi_n == v["aoi_n"] and baseline_period[0] == int(v["tmin"][:4]) and baseline_period[1] == int(v["tmax"][:4])
         }
-        cordex_aoi_evaluation = {k:v
+        cordex_aoi_historical = {k:v
             for k,v in {file:get_cordex_context_from_filename(file) for file in cordex_simulations_to_downscale}.items()
-            if aoi_n == v["aoi_n"] and evaluation_period[0] == int(v["tmin"][:4]) and evaluation_period[1] == int(v["tmax"][:4])
+            if aoi_n == v["aoi_n"] and baseline_period[0] == int(v["tmin"][:4]) and baseline_period[1] == int(v["tmax"][:4])
         }
 
         # Get projections data
@@ -174,9 +176,9 @@ def run_downscaling(
             if aoi_n == v["aoi_n"] and projection_period[0] == int(v["tmin"][:4]) and projection_period[1] == int(v["tmax"][:4])
         }
 
-        for k,v in {**cmip6_aoi_evaluation, **cordex_aoi_evaluation}.items():
-            # Open evaluation and projection datasets
-            ds_evaluation = xr.open_dataset(k)
+        for k,v in {**cmip6_aoi_historical, **cordex_aoi_historical}.items():
+            # Open historical datasets
+            ds_historical = xr.open_dataset(k)
             if v["data_product"] == DataProduct.CMIP6.product_name:
                 ds_projection_file = [f for f,d in cmip6_aoi_projection.items()
                                       if d["institute"] == v["institute"] and
@@ -194,13 +196,13 @@ def run_downscaling(
             ds_projection = xr.open_dataset(ds_projection_file[0])
 
             # Interpolate the data onto reference grid
-            regridder = xe.Regridder(ds_evaluation, reference_grid, "bilinear")
-            ds_evaluation_reggrided = regridder(ds_evaluation, keep_attrs=True)
+            regridder = xe.Regridder(ds_historical, reference_grid, "bilinear")
+            ds_historical_reggrided = regridder(ds_historical, keep_attrs=True)
             ds_projection_reggrided = regridder(ds_projection, keep_attrs=True)
 
             # Downscale
             if method == DownscaleMethod.BIAS_CORRECTION:
-                ds_projection_downscaled = bias_correction(ds_baseline_reggrided, ds_evaluation_reggrided, ds_projection_reggrided)
+                ds_projection_downscaled = bias_correction(ds_baseline_reggrided, ds_historical_reggrided, ds_projection_reggrided)
             else:
                 msg = "Method not implemented yet, only bias_correction is available."
                 raise ValueError(msg)

@@ -17,6 +17,7 @@ from .utils import (
     Frequency,
     VariableAttributes,
     climatology_filename,
+    get_grid,
     get_monthly_climatology,
     get_monthly_mean,
     prep_dataset,
@@ -160,4 +161,8 @@ def get_chirps(
         ds = _get_chirps_area_period(
             aoi_b, aoi_n, period, time_frequency, aggregation
         )
-        ds.to_netcdf(output_file)
+        if not Path(f"{output_dir}/{data_product.product_name}_{aoi_n}_grid.nc").is_file():
+            # Save the grid for the dataset
+            print(f"Saving {data_product.product_name} grid for {aoi_n}...")
+            grid = get_grid(ds, data_product)
+            grid.to_netcdf(f"{output_dir}/{data_product.product_name}_{aoi_n}_grid.nc")

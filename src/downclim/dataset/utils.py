@@ -4,7 +4,6 @@ import os
 from dataclasses import asdict, dataclass
 from datetime import datetime as dt
 from enum import Enum
-from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -277,16 +276,17 @@ def climatology_filename(outputdir: str, aoi_name: str, dataproduct: DataProduct
     """
     return f"{outputdir}/{aoi_name}_{dataproduct.product_name}_{aggregation.value}_{period[0]}-{period[1]}.nc"
 
-def save_reference_grid(aoi: str, ds: xr.Dataset, output_dir: str, data_product: DataProduct) -> None:
+def get_grid(ds: xr.Dataset, data_product: DataProduct) -> xr.Dataset:
     """Save the reference grid for a given data product.
 
     Args:
-        aoi (str): The area of interest.
         ds (xr.Dataset): The dataset containing the reference grid.
-        output_dir (str): The directory where the reference grid should be saved.
         data_product (DataProduct): The data product for which to save the reference grid.
+
+    Returns
+    -------
+    xr.Dataset
+        The reference grid dataset.
     """
-    if not Path(f"{output_dir}/{aoi}_reference_grid.nc").is_file():
-        ds[[data_product.lon_lat_names['lon'], data_product.lon_lat_names['lat']]]. \
-            rename({data_product.lon_lat_names['lon']:'lon', data_product.lon_lat_names['lat']:'lat'}). \
-            to_netcdf(f"{output_dir}/{aoi}_reference_grid.nc")
+    return ds[[data_product.lon_lat_names['lon'], data_product.lon_lat_names['lat']]]. \
+            rename({data_product.lon_lat_names['lon']:'lon', data_product.lon_lat_names['lat']:'lat'})

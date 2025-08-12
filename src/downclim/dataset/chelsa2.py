@@ -22,9 +22,9 @@ from .utils import (
     Frequency,
     VariableAttributes,
     climatology_filename,
+    get_grid,
     get_monthly_climatology,
     prep_dataset,
-    save_reference_grid,
     split_period,
 )
 
@@ -231,19 +231,18 @@ def get_chelsa2(
     # Actual data retrieval with update aois if needed
     if aoi_name:
         paths = []
-        pool = Pool(nb_threads)
-        for var in variable:
-            paths.append(
-                pool.starmap_async(
-                #pool.starmap(
-                    _get_chelsa2_year_var,
-                    [
-                        (aoi_name, aoi_bound, year, var, frequency, tmp_dir)
-                        for year in years
-                    ],
-                ).get()
-            )
-        pool.close()
+        with Pool(nb_threads) as pool:
+            for var in variable:
+                paths.append(
+                    pool.starmap_async(
+                    #pool.starmap(
+                        _get_chelsa2_year_var,
+                        [
+                            (aoi_name, aoi_bound, year, var, frequency, tmp_dir)
+                            for year in years
+                        ],
+                    ).get()
+                )
         paths2 = {
             aoi_n: [p[aoi_n] for path in paths for p in path] for aoi_n in aoi_name
         }
@@ -267,7 +266,10 @@ def get_chelsa2(
                 raise ValueError(msg)
             ds_aoi_period_clim.to_netcdf(output_filename)
 
-            save_reference_grid(aoi_n, ds_aoi_period_clim, output_dir, data_product)
+            if not Path(f"{output_dir}/{data_product.product_name}_{aoi_n}_grid.nc").is_file():
+                print(f"Saving {data_product.product_name} grid for {aoi_n}...")
+                grid = get_grid(ds_aoi_period_clim, data_product)
+                grid.to_netcdf(f"{output_dir}/{data_product.product_name}_{aoi_n}_grid.nc")
 
     if not keep_tmp_dir:
         shutil.rmtree(tmp_dir)

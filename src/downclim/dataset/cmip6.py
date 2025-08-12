@@ -400,10 +400,11 @@ def get_cmip6(
             logger.info("Extracting CMIP6 data for %s period, years %s to %s, for the area of interest '%s'.",
                         period_name, tmin, tmax, aoi_n)
             # Extend the AOI to avoid edge effects
-            aoi_b["minx"] -= 2
-            aoi_b["miny"] -= 2
-            aoi_b["maxx"] += 2
-            aoi_b["maxy"] += 2
+            bounds = aoi_b.copy()
+            bounds["minx"] -= 2
+            bounds["miny"] -= 2
+            bounds["maxx"] += 2
+            bounds["maxy"] += 2
             for (institute, source, ensemble, experiment), ds in all_ds.items():
                 output_file = _get_filename_from_cmip6_context(
                     output_dir, aoi_n, data_product, institute, source, experiment, ensemble, aggregation, tmin, tmax
@@ -414,7 +415,7 @@ def get_cmip6(
                 ds_period = ds.sel(time=slice(tmin, tmax))
                 if ds_period.sizes["time"] == 0:
                     continue
-                ds_aoi = ds_period.rio.write_crs("epsg:4326").rio.clip_box(*aoi_b.to_numpy()[0])
+                ds_aoi = ds_period.rio.write_crs("epsg:4326").rio.clip_box(*bounds.to_numpy()[0])
                 if aggregation != Aggregation.MONTHLY_MEAN:
                     msg = "Currently only monthly-means aggregation available!"
                     raise ValueError(msg)

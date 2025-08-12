@@ -17,10 +17,10 @@ from .utils import (
     Frequency,
     VariableAttributes,
     climatology_filename,
+    get_grid,
     get_monthly_climatology,
     get_monthly_mean,
     prep_dataset,
-    save_reference_grid,
     split_period,
 )
 
@@ -151,4 +151,8 @@ def get_gshtd(
         )
         ds.to_netcdf(output_file)
 
-        save_reference_grid(aoi_n, ds, output_dir, data_product)
+        if not Path(f"{output_dir}/{data_product.product_name}_{aoi_n}_grid.nc").is_file():
+            # Save the grid for the dataset
+            print(f"Saving {data_product.product_name} grid for {aoi_n}...")
+            grid = get_grid(ds, data_product)
+            grid.to_netcdf(f"{output_dir}/{data_product.product_name}_{aoi_n}_grid.nc")
