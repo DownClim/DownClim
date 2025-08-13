@@ -217,7 +217,7 @@ def run_hist(
     period_eval: str,
 ) -> pd.DataFrame:
     proj_file = f"results/projections/{aoi}_{origin}_{domain}_{institute}_{model}_{experiment}_{ensemble}_{rcm}_{downscaling}_{baseline}_{aggregation}_{period_eval}.nc"
-    area_shp = gp.read_file(aoi_file)
+    area_shp = gpd.read_file(aoi_file)
     ds = xr.open_dataset(ds_file).rio.clip(area_shp.geometry.values, area_shp.crs)
     proj = xr.open_dataset(proj_file).rio.clip(area_shp.geometry.values, area_shp.crs)
     pd.concat([get_hist(ds, "downscaled"), get_hist(proj, "raw")]).to_csv(
@@ -254,7 +254,7 @@ def run_eval(
 
 
 
-    proj_file = f"results/projections/{parameters.area}_{parameters.origin}_{parameters.domain}_{parameters.institute}_{parameters.model}_{parameters.parameters.experiment}_{parameters.ensemble}_{parameters.rcm}_{parameters.downscaling}_{parameters.baseline}_{parameters.aggregation}_{parameters.period_eval}.nc"
+    proj_file = f"results/projections/{parameters.area}_{parameters.origin}_{parameters.domain}_{parameters.institute}_{parameters.model}_{parameters.experiment}_{parameters.ensemble}_{parameters.rcm}_{parameters.downscaling}_{parameters.baseline}_{parameters.aggregation}_{parameters.period_eval}.nc"
 
 
     proj = xr.open_dataset(proj_file).rio.clip(area_shp.geometry.values, area_shp.crs)

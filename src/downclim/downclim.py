@@ -158,6 +158,10 @@ class DownClimContext(BaseModel):
             Can be either a dictionary with 'openid' and 'password' keys,
             or a path to a yaml file containing these 2 fields.""",
     )
+    ee_project: str = Field(
+        default=None,
+        description="Earth Engine project ID to use for downloading the data stored in Google Earth Engine.",
+    )
 
     class Config:
         """Pydantic configuration for the DownClimContext class."""
@@ -408,6 +412,18 @@ class DownClimContext(BaseModel):
         msg = "ESGF credentials must be a dictionary, a path to a yaml file or None."
         raise ValueError(msg)
 
+    @field_validator("ee_project", mode="before")
+    @classmethod
+    def validate_ee_project(cls, v: str | None) -> str | None:
+        if v is None:
+            msg = """No Earth Engine project ID provided.
+            You won't be able to access Earth Engine datasets."""
+            warnings.warn(msg, stacklevel=1)
+        elif not isinstance(v, str):
+            msg = "ee_project: Earth Engine project ID must be a string."
+            raise ValueError(msg)
+        return v
+
     def _get_baseline_product(self) -> None:
         """Get the baseline data for the DownClim context.
 
@@ -468,8 +484,8 @@ class DownClimContext(BaseModel):
                     frequency=self.time_frequency,
                     aggregation=self.downscaling_aggregation,
                     nb_threads=self.nb_threads,
-                    output_dir=f"{self.output_dir}/{self.evaluation_product.product_name}",
-                    tmp_dir=f"{self.tmp_dir}/{self.evaluation_product.product_name}",
+                    output_dir=f"{self.output_dir}/{product.product_name}",
+                    tmp_dir=f"{self.tmp_dir}/{product.product_name}",
                     keep_tmp_dir=self.keep_tmp_dir,
                 )
             elif product is DataProduct.CHIRPS:
@@ -478,7 +494,7 @@ class DownClimContext(BaseModel):
                     period=self.evaluation_period,
                     time_frequency=self.time_frequency,
                     aggregation=self.downscaling_aggregation,
-                    output_dir=f"{self.output_dir}/{self.evaluation_product.product_name}",
+                    output_dir=f"{self.output_dir}/{product.product_name}",
                     ee_project=self.ee_project
                 )
             elif product is DataProduct.GSHTD:
@@ -488,11 +504,11 @@ class DownClimContext(BaseModel):
                     period=self.evaluation_period,
                     time_frequency=self.time_frequency,
                     aggregation=self.downscaling_aggregation,
-                    output_dir=f"{self.output_dir}/{self.evaluation_product.product_name}",
+                    output_dir=f"{self.output_dir}/{product.product_name}",
                     ee_project=self.ee_project
                 )
             else:
-                msg = f"Unknown or not implemented data product '{self.evaluation_product.product_name}'."
+                msg = f"Unknown or not implemented data product '{product.product_name}'."
                 raise ValueError(msg)
 
 
