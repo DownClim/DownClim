@@ -32,6 +32,7 @@ class CMIP6Context(BaseModel):
     """Context about the query on the CMIP6 dataset.
 
     Entries of the dictionary can be either `str` or `list` of `str` if multiple values are provided. These following keys are available. None are mandatory:
+
     - activity_id: str, e.g "ScenarioMIP", "CMIP"
     - institution_id: str, e.g "IPSL", "NCAR"
     - source_id: str, e.g "IPSL-CM6A-LR", "CMCC-CM2-HR4"
@@ -305,7 +306,7 @@ def inspect_cmip6(
 def get_cmip6(
     aoi: list[gpd.GeoDataFrame],
     cmip6_simulations: pd.DataFrame,
-    baseline_period: tuple[int, int] = (1980, 2005),
+    historical_period: tuple[int, int] = (1980, 2005),
     evaluation_period: tuple[int, int] = (2006, 2019),
     projection_period: tuple[int, int] | None = (2071, 2100),
     aggregation: Aggregation = Aggregation.MONTHLY_MEAN,  # type: ignore[assignment]
@@ -327,7 +328,7 @@ def get_cmip6(
         List of GeoDataFrames defining the areas of interest.
     cmip6_simulations: pd.DataFrame
         DataFrame containing the CMIP6 simulations to retrieve. Typically the output of the `list_available_simulations` method from the `CMIP6Context` class.
-    baseline_period: tuple[int, int]
+    historical_period: tuple[int, int]
         Interval of years to use for the baseline period.
     evaluation_period: tuple[int, int]
         Interval of years to use for the evaluation period.
@@ -391,7 +392,7 @@ def get_cmip6(
         )
 
     # Define time periods
-    periods_years = [baseline_period, evaluation_period, projection_period]
+    periods_years = [historical_period, evaluation_period, projection_period]
     periods_names = ["baseline", "evaluation", "projection"]
 
     for period_year, period_name in zip(periods_years, periods_names, strict=False):
@@ -431,7 +432,7 @@ def get_cmip6(
 def get_cmip6_old(
     aoi: Iterable[gpd.GeoDataFrame],
     variable: Iterable[str] = ("pr", "tas", "tasmin", "tasmax"),
-    baseline_period: tuple[int, int] = (1980, 2005),
+    historical_period: tuple[int, int] = (1980, 2005),
     evaluation_period: tuple[int, int] = (2006, 2019),
     projection_period: tuple[int, int] = (2071, 2100),
     time_frequency: Frequency = Frequency.MONTHLY,
@@ -523,7 +524,7 @@ def get_cmip6_old(
 
     dminsmaxs = [
         split_period(period)
-        for period in [baseline_period, evaluation_period, projection_period]
+        for period in [historical_period, evaluation_period, projection_period]
     ]
     dmin = min(dminsmaxs, key=lambda x: x[0])[0]
     dmax = max(dminsmaxs, key=lambda x: x[1])[1]
@@ -531,7 +532,7 @@ def get_cmip6_old(
     ds = ds.chunk(chunks=chunks)
     ds = prep_dataset(ds, "cmip6")
 
-    for i, period in enumerate([baseline_period, evaluation_period, projection_period]):
+    for i, period in enumerate([historical_period, evaluation_period, projection_period]):
         dmin, dmax = dminsmaxs[i]
         ds_clim = get_monthly_climatology(ds.sel(time=slice(dmin, dmax)))
         for aoi_n in aoi_name:

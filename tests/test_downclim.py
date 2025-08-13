@@ -16,7 +16,7 @@ def valid_minimal_context():
     return {
         "aoi": gpd.GeoDataFrame(geometry=[box(0, 0, 1, 1)]),
         "variables": ["tas"],
-        "baseline_periods": (1980, 2000),
+        "historical_periods": (1980, 2000),
         "evaluation_periods": (2001, 2020),
         "projection_periods": (2021, 2040),
         "evaluation_products": ["chelsa"],
@@ -95,7 +95,7 @@ def test_from_yaml_template(tmp_path):
     yaml_path.write_text("""
     aoi: POLYGON((0 0, 0 1, 1 1, 1 0, 0 0))
     variables: ["tas"]
-    baseline_periods: [1980, 2000]
+    historical_periods: [1980, 2000]
     evaluation_periods: [2001, 2020]
     projection_periods: [2021, 2040]
     evaluation_products: ["chelsa"]

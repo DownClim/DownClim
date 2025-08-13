@@ -50,7 +50,7 @@ get_gshtd(
 downclim_context = DownClimContext(
     aoi=["Vanuatu", (30, 30, 40, 40, "box")],
     variable=["pr", "tas", "tasmin", "tasmax"],
-    baseline_period=(1980, 1981),
+    historical_period=(1980, 1981),
     evaluation_period=(2006, 2007),
     projection_period=(2071, 2072),
     time_frequency="mon",
@@ -74,7 +74,7 @@ cordex_simulations.to_csv("results/cordex/cordex_simulations.csv")
 get_cordex(
     aoi=aois,
     cordex_simulations=cordex_simulations,
-    baseline_period=(1980, 1981),
+    historical_period=(1980, 1981),
     evaluation_period=(2006, 2007),
     projection_period=(2071, 2072),
     output_dir="./results/cordex",
@@ -99,7 +99,7 @@ cmip6_simulations.to_csv("results/cmip6/cmip6_simulations.csv")
 get_cmip6(
     aoi=aois,
     cmip6_simulations=cmip6_simulations,
-    baseline_period=(1980, 1981),
+    historical_period=(1980, 1981),
     evaluation_period=(2006, 2007),
     projection_period=(2071, 2072),
     output_dir="./results/cmip6",

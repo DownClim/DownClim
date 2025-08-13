@@ -1,6 +1,6 @@
 # DownClim - Downscale Climate Projections
 
-Sylvain Schmitt - Jul 8, 2024
+Sylvain Schmitt - Thomas Arsouze - Ghislain Vieilledent
 
 [![Actions Status][actions-badge]][actions-link]
 [![Documentation Status][rtd-badge]][rtd-link]
@@ -28,17 +28,14 @@ Sylvain Schmitt - Jul 8, 2024
 
 <!-- prettier-ignore-end -->
 
-- [Installation](#installation)
-- [Credentials](#credentials)
-- [Usage](#usage)
-- [Configuration](#configuration)
-- [Workflow](#workflow)
-- [Data](#data)
-
-[`snakemake`](https://github.com/sylvainschmitt/snakemake_singularity) workflow
-to downscale climate projections.
-
-[![Repo status](https://www.repostatus.org/badges/latest/wip.svg)](https://www.repostatus.org/#wip)
+- [DownClim - Downscale Climate Projections](#downclim---downscale-climate-projections)
+  - [Installation](#installation)
+  - [Credentials](#credentials)
+  - [Usage](#usage)
+  - [Configuration](#configuration)
+  - [Data](#data)
+    - [Baselines](#baselines)
+    - [Projections](#projections)
 
 The purpose of `DownClim` is to offer a tool for regional and national climate
 projections including the mechanistic ‘dynamic’ downscaling of the CORDEX
@@ -53,25 +50,14 @@ an automated `snakemake` workflow easily reproducible and scalable associated to
 
 ## Installation
 
-This workflow is built on:
-
-- [x] Python ≥3.5
-- [x] [Mambaforge](https://github.com/conda-forge/miniforge#mambaforge)
-- [x] Snakemake ≥5.24.1
+As `DownClim` is under active development, no official release is available so
+far. You can install from the source code:
 
 ```bash
-conda activate base
-mamba create -c conda-forge -c bioconda -n snakemake snakemake
-conda activate snakemake
-snakemake --help
-```
-
-Once installed simply clone the workflow:
-
-```bash
-git clone git@github.com:sylvainschmitt/DownClim.git
+git clone git@github.com:DownClim/DownClim.git
 cd DownClim
-snakemake -np
+# To install in "editable" / development mode
+pip install -e .
 ```
 
 ## Credentials
@@ -96,186 +82,47 @@ echo -e "openid: $openid\npwd: $pwd" > config/credentials_esgf.yml
 
 ## Usage
 
-```bash
-module load bioinfo/Snakemake/7.20.0 # for test, adapt to your HPC
-snakemake -np # dry run
-snakemake --dag | dot -Tsvg > dag/dag.svg # dag
-snakemake -j 1 --resources mem_mb=10000 # local run (test)
-sbatch job.sh # HPC run with slurm
-```
+Please follow the [documentation](https://DownClim.readthedocs.io/en/latest/)
+for usage instructions. Start with the
+[getting started guide](https://DownClim.readthedocs.io/en/latest/getting_started.html),
+and then dive deeper in the
+[advanced usage section](https://DownClim.readthedocs.io/en/latest/advanced_usage.html).
 
 ## Configuration
 
-Different configuration parameters to set in
-[`config/config.yml`](https://github.com/sylvainschmitt/DownClim/blob/main/config/config_ex.yml)
-ordered by steps:
+Very minimal set of information is needed by `DownClim` to run.
 
-- Area
-  - area: names of the area to work with, _e.g._ New-Caledonia.
+- Area of interest
+  - **_aoi_**: names of the area to work with, _e.g._ New-Caledonia.
 - Time
-  - time_frequency: time frequency of data (month “mon”, day “day” or x-hourly
-    “3hr”), currently only “mon” is available.
-  - hist*years: historical period on which to adjust projections, \_e.g.*
+  - **_time_frequency_**: time frequency of data (month “mon”, day “day” or
+    x-hourly “3hr”), currently only “mon” is available.
+  - **_historical_period_**: period on which to adjust projections, \_e.g.\*
     1980-2005.
-  - eval*years: evaluation period on which to evaluate projections, \_e.g.*
+  - **_evaluation_period_**: period on which to evaluate projections, \_e.g.\*
     2006-2019.
-  - proj*years: projection period on which to downscale the projections, \_e.g.*
-    2071-2100.
+  - **_projection_period_**: period on which to downscale the projections,
+    \_e.g.\* 2071-2100.
 - Variables
-  - variables: used variables, _e.g._ temperature at surface ’tas”, minimum
-    temperature “tasmin”, maximum temperature “tasmax”, and precipitations “pr”
-    (currently only-one availables).
+  - **_variables_**: variables to downscale, \_e.g. temperature at surface
+    ’tas”, minimum temperature “tasmin”, maximum temperature “tasmax”,
+    precipitations “pr”.
 - Baseline
-  - baseline: climate product for the baseline (CHELSA V2 “chelsa2” , WorldClim
-    V2 “worldclim2”, CRU TS V4 “cru4”, currently only chelsa2 is available).
-  - base*years: years to be retrieved from the baseline, \_e.g.* 1980-2019.
+  - **_baseline_product_**: climate product for the baseline (CHELSA V2, GSHTD,
+    CHIRPS).
 - Projection
-  - projections: path to the file defining the requested projections on ESGF. An
-    example can be found in
-    [config/projections_ex.tsv](https://github.com/sylvainschmitt/DownClim/blob/main/config/projections_ex.tsv).
-    [config/list_projections.py](https://github.com/sylvainschmitt/DownClim/blob/main/config/list_projections.py)
-    helps generating the list.
-  - domains: path to the file definingthe CORDEX domains corresponding to each
-    country. An helper script to generate it should be added.
-  - esgf_credentials: path to the file defining the user credentials on esgf,
-    see credentials above.
+  - **_CMIP6Context_**: information about the CMIP6 projections to use.
+  - **_CORDEXContext_**: information about the CORDEX projections to use.
+  - **_esgf_credentials_**: path to the file defining the user credentials on
+    esgf.
 - Downscaling
-  - aggregation: time aggregation before downscaling, currently only
+  - **_aggregation_**: time aggregation before downscaling, currently only
     “monthly-means” are available.
-  - ds_method: downscaling method to be used (bias correction “bc”,
-    quantile-based “qt”, currently only bc is available).
+  - **_downscaling_method_**: downscaling method to be used (bias correction
+    “bc”, quantile-based “qt”, currently only bc is available).
 - Evaluation
-  - base_eval: climate product for the evaluation (CHELSA V2 “chelsa2” ,
-    WorldClim V2 “worldclim2”, CRU TS V4 “cru4”, currently only chelsa2 is
-    available).
-
-## Workflow
-
-### [get_area](https://github.com/sylvainschmitt/DownClim/blob/main/rules/get_area.py)
-
-- Data: [GADM](https://gadm.org/)
-- Script:
-  [`get_area.py`](https://github.com/sylvainschmitt/DownClim/blob/main/scripts/get_area.py)
-- Environment:
-  [`gadm.yml`](https://github.com/sylvainschmitt/DownClim/blob/main/envs/gadm.yml)
-
-Python script to get area limits with GADM if country or continent.
-
-### [get_chelsa2](https://github.com/sylvainschmitt/DownClim/blob/main/rules/get_chelsa2.py)
-
-- Data: [CHELSA V2.1](https://chelsa-climate.org/)
-- Script:
-  [`get_chelsa2.py`](https://github.com/sylvainschmitt/DownClim/blob/main/scripts/get_chelsa2.py)
-- Environment:
-  [`xarray.yml`](https://github.com/sylvainschmitt/DownClim/blob/main/envs/xarray.yml)
-
-Python script to download, crop, adjust and aggregate CHELSA V2.1.
-
-### [get_chirps](https://github.com/sylvainschmitt/DownClim/blob/main/rules/get_chirps.py)
-
-- Data: [CHIRPS](https://www.chc.ucsb.edu/data/chirps)
-- Script:
-  [`get_chirps.py`](https://github.com/sylvainschmitt/DownClim/blob/main/scripts/get_chirps.py)
-- Environment:
-  [`xarray.yml`](https://github.com/sylvainschmitt/DownClim/blob/main/envs/xarray.yml)
-
-Python script to download, crop, adjust and aggregate CHIRPS.
-
-### [get_gshtd](https://github.com/sylvainschmitt/DownClim/blob/main/rules/get_gshtd)
-
-- Data: [GSHTD](https://gee-community-catalog.org/projects/gshtd/)
-- Script:
-  [`get_gshtd.py`](https://github.com/sylvainschmitt/DownClim/blob/main/scripts/get_gshtd)
-- Environment:
-  [`xarray.yml`](https://github.com/sylvainschmitt/DownClim/blob/main/envs/xarray.yml)
-
-Python script to download, crop, adjust and aggregate GSHTD.
-
-### [get_cordex](https://github.com/sylvainschmitt/DownClim/blob/main/rules/get_cordex.py)
-
-- Data: [CORDEX projections](https://esgf-node.ipsl.upmc.fr/search/cordex-ipsl/)
-- Script:
-  [`get_cordex.py`](https://github.com/sylvainschmitt/DownClim/blob/main/scripts/get_cordex2.py)
-- Environment:
-  [`xarray.yml`](https://github.com/sylvainschmitt/DownClim/blob/main/envs/xarray.yml)
-
-Python script to download, crop, reproject, adjust, and aggregate CORDEX
-projections.
-
-### [get_cmip6](https://github.com/sylvainschmitt/DownClim/blob/main/rules/get_cmip6.py)
-
-- Data:
-  [CMIP6 projections](https://console.cloud.google.com/marketplace/product/noaa-public/cmip6?)
-- Script:
-  [`get_cmip6.py`](https://github.com/sylvainschmitt/DownClim/blob/main/scripts/get_cmip6x.py)
-- Environment:
-  [`xarray.yml`](https://github.com/sylvainschmitt/DownClim/blob/main/envs/xarray.yml)
-
-Python script to download, crop, reproject, adjust, and aggregate CMIP6
-projections.
-
-### [downscale_bc](https://github.com/sylvainschmitt/DownClim/blob/main/rules/downscale_bc.py)
-
-- Script:
-  [`downscale_bc.py`](https://github.com/sylvainschmitt/DownClim/blob/main/scripts/downscale_bc.py)
-- Environment:
-  [`xarray.yml`](https://github.com/sylvainschmitt/DownClim/blob/main/envs/xarray.yml)
-
-Python script to compute downscaled projection with bias correction (delta or
-change-factor method). Anomalies between historical and projected periods are
-computed for the projections. Anomalies are interpolated and added to the
-historical period of the baseline.
-
-### [hist_base](https://github.com/sylvainschmitt/DownClim/blob/main/rules/hist_base.py)
-
-- Script:
-  [`hist_base.py`](https://github.com/sylvainschmitt/DownClim/blob/main/scripts/hist_base.py)
-- Environment:
-  [`xarray.yml`](https://github.com/sylvainschmitt/DownClim/blob/main/envs/xarray.yml)
-
-Extract histograms of values for land of the baseline. Similarly,
-[hist_proj](https://github.com/sylvainschmitt/DownClim/blob/main/rules/hist_proj.py)
-extract histograms for the projection before and after downscaling.
-
-### [merge_hist](https://github.com/sylvainschmitt/DownClim/blob/main/rules/merge_hist.py)
-
-Merge all histograms.
-
-### [eval_proj](https://github.com/sylvainschmitt/DownClim/blob/main/rules/eval_proj.py)
-
-- Script:
-  [`eval_proj.py`](https://github.com/sylvainschmitt/DownClim/blob/main/scripts/eval_proj.py)
-- Environment:
-  [`xarray.yml`](https://github.com/sylvainschmitt/DownClim/blob/main/envs/xarray.yml)
-
-Compute evaluation metrics (CC, RMSEP, SDE, Bias) for the projection before and
-after downscaling.
-
-### [merge_eval](https://github.com/sylvainschmitt/DownClim/blob/main/rules/merge_eval.py)
-
-Merge all evaluations.
-
-### [map_bias](https://github.com/sylvainschmitt/DownClim/blob/main/rules/map_bias.py)
-
-- Script:
-  [`map_bias.py`](https://github.com/sylvainschmitt/DownClim/blob/main/scripts/map_bias.py)
-- Environment:
-  [`xarray.yml`](https://github.com/sylvainschmitt/DownClim/blob/main/envs/xarray.yml)
-
-Compute bias maps for the downscaled projections.
-
-### [merge_bias](https://github.com/sylvainschmitt/DownClim/blob/main/rules/merge_bias.py)
-
-Merge all bias maps.
-
-### [get_tmf](https://github.com/sylvainschmitt/DownClim/blob/main/rules/get_tmf.py)
-
-- Script:
-  [`get_tmf.py`](https://github.com/sylvainschmitt/DownClim/blob/main/scripts/get_tmf.py)
-- Environment:
-  [`xarray.yml`](https://github.com/sylvainschmitt/DownClim/blob/main/envs/xarray.yml)
-
-Project Tropical Moist Forest climatic niche in the projection period.
+  - **_evaluation_product_**: climate product for the evaluation (CHELSA V2,
+    CHRIPS, GSHTD).
 
 ## Data
 

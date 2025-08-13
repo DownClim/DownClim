@@ -1,21 +1,19 @@
 # DownClim
 
-`DownClim` is an open source project that will make your climate downscaling
-easily! It provides a bunch of tools to download and process climate data, and
-to downscale it.
+`DownClim` is an open source project that will help you to downscale your
+climate data easily ! It provides a bunch of tools to download and process
+climate data, and to downscale it over your area of interest.
 
 ## Description
 
-The purpose of `DownClim` is to offer a tool for regional climate projections
-including the mechanistic 'dynamic' downscaling of the CORDEX initiative.
-`DownClim` is opposed to the direct statistical downscaling of global climate
-projections found in [WorldClim](https://www.worldclim.org/) and
-[CHELSA](https://chelsa-climate.org/). The approach is justified by an
-improvement in regional projections of [CORDEX](https://cordex.org/) compared to
-[CMIP](https://www.wcrp-cmip.org/), although it can increase uncertainty and
-sometimes be less reliable. The tool is an automated snakemake workflow easily
-reproducible and scalable associated to conda environments for enhance
-reproducibility and portability.
+The purpose of `DownClim` is to offer a tool to :
+
+- easily download reference climatic dataset over your area of interest
+- search and download both regional simulations of [CORDEX](https://cordex.org/)
+  and global simulations from [CMIP](https://www.wcrp-cmip.org/).
+- perform a downscaling with correction method for future climatic scenatios, to
+  obtain unbiased high-resolution climate projections usable for ecological
+  modeling, impact assessment or decision-making.
 
 ```{toctree}
 :hidden:

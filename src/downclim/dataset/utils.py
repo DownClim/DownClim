@@ -7,6 +7,7 @@ from enum import Enum
 from typing import Any
 
 import numpy as np
+import pandas as pd
 import xarray as xr
 from aenum import MultiValueEnum
 
@@ -290,3 +291,25 @@ def get_grid(ds: xr.Dataset, data_product: DataProduct) -> xr.Dataset:
     """
     return ds[[data_product.lon_lat_names['lon'], data_product.lon_lat_names['lat']]]. \
             rename({data_product.lon_lat_names['lon']:'lon', data_product.lon_lat_names['lat']:'lat'})
+
+def save_simulations_list(
+    cordex_simulations: pd.DataFrame | None = None,
+    cmip6_simulations: pd.DataFrame | None = None,
+    output_file: str = "resources/projections_all.csv",
+) -> None:
+    """
+    Save the lists of available CORDEX and CMIP6 simulations to a CSV file.
+
+    Parameters
+    ----------
+    cordex_simulations: pd.DataFrame
+        DataFrame containing information about the available CORDEX simulations.
+    cmip6_simulations: pd.DataFrame
+        DataFrame containing information about the available CMIP6 simulations.
+    output_file: str (default: "resources/projections_all.csv")
+        Path to the output file.
+    """
+
+    pd.concat([cordex_simulations, cmip6_simulations]).to_csv(
+        output_file, sep=",", index=False
+    )

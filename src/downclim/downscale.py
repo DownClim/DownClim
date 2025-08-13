@@ -58,7 +58,7 @@ def bias_correction(
 
 def run_downscaling(
     aoi: list[gpd.GeoDataFrame],
-    baseline_period: tuple[int, int],
+    historical_period: tuple[int, int],
     projection_period: tuple[int, int],
     baseline_product: DataProduct,
     cmip6_simulations_to_downscale: list[str] | None = None,
@@ -74,7 +74,7 @@ def run_downscaling(
 
     Args:
         aoi (list[gpd.GeoDataFrame]): List of areas of interest.
-        baseline_period (tuple[int, int]): Baseline period (start, end).
+        historical_period (tuple[int, int]): Baseline period (start, end).
         projection_period (tuple[int, int]): Projection period (start, end).
         baseline_product (DataProduct): Baseline product to use.
         cmip6_simulations_to_downscale (list[str] | None): List of CMIP6 simulations to downscale. Defaults to None,
@@ -143,7 +143,7 @@ def run_downscaling(
         reference_grid = xr.open_dataset(reference_grid_file)
 
         # Get baseline historical data and interpolate on reference grid (if needed)
-        baseline_file = climatology_filename(f"{input_dir}/{baseline_product.product_name}", aoi_n, baseline_product, aggregation, baseline_period)
+        baseline_file = climatology_filename(f"{input_dir}/{baseline_product.product_name}", aoi_n, baseline_product, aggregation, historical_period)
         if not Path(baseline_file).is_file():
             msg = f"Baseline historical data not found for {aoi_n}. Please download it first."
             raise FileNotFoundError(msg)
@@ -159,11 +159,11 @@ def run_downscaling(
         # Get historical data
         cmip6_aoi_historical = {k:v
             for k,v in {file:get_cmip6_context_from_filename(file) for file in cmip6_simulations_to_downscale}.items()
-            if aoi_n == v["aoi_n"] and baseline_period[0] == int(v["tmin"][:4]) and baseline_period[1] == int(v["tmax"][:4])
+            if aoi_n == v["aoi_n"] and historical_period[0] == int(v["tmin"][:4]) and historical_period[1] == int(v["tmax"][:4])
         }
         cordex_aoi_historical = {k:v
             for k,v in {file:get_cordex_context_from_filename(file) for file in cordex_simulations_to_downscale}.items()
-            if aoi_n == v["aoi_n"] and baseline_period[0] == int(v["tmin"][:4]) and baseline_period[1] == int(v["tmax"][:4])
+            if aoi_n == v["aoi_n"] and historical_period[0] == int(v["tmin"][:4]) and historical_period[1] == int(v["tmax"][:4])
         }
 
         # Get projections data

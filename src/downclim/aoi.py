@@ -14,11 +14,12 @@ def get_aoi_informations(
 ) -> tuple[list[str], list[tuple[float, float, float, float]]]:
     """Retrieve the names and bounds of a list of areas of interest defined by GeoDataFrame.
 
-    Parameters:
+    Parameters
     ----------
     aois: List(geopandas.GeoDataFrame)
+        Definition of the areas of interest, usually obtained from the ``get_aoi`` function.
 
-    Returns:
+    Returns
     -------
     Tuple[List[str], List[Tuple[float, float, float, float]]]:
         - List of names of the areas of interest.
@@ -73,18 +74,21 @@ def get_aoi(
             calls the pygadm library to retrieve borders of the aoi, using the
             administrative name (more information at https://pygadm.readthedocs.io/en/latest/usage.html#find-administrative-names)
             e.g. :
+
             ```
             get_aoi("France")
             ```
         if aoi is a tuple of floats with one string:
             creates a geodataframe with the bounds of the aoi. Must be in the format (xmin, ymin, xmax, ymax, name)
             e.g.:
+
             ```
             get_aoi((0, 0, 10, 10, "box"))
             ```
         if aoi is a geopandas.geodataframe::
             uses the geodataframe as the aoi. The "geometry" must be defined as a MultiPolygon and must have a column "NAME_0" with the name of the aoi.
             e.g.:
+
             ```
             ob = MultiPolygon([
             (((0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0)),
@@ -105,8 +109,7 @@ def get_aoi(
 
     Returns
     -------
-    geopandas.GeoDataFrame
-        of the aoi
+    geopandas.GeoDataFrame of the aoi
     """
 
     # create output folder

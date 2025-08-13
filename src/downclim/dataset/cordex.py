@@ -474,7 +474,7 @@ def get_cordex_context_from_filename(filename: str) -> dict[str, str]:
 def get_cordex(
     aoi: list[gpd.GeoDataFrame],
     cordex_simulations: pd.DataFrame,
-    baseline_period: tuple[int, int] = (1980, 2005),
+    historical_period: tuple[int, int] = (1980, 2005),
     evaluation_period: tuple[int, int] = (2006, 2019),
     projection_period: tuple[int, int] = (2071, 2100),
     aggregation: Aggregation = Aggregation.MONTHLY_MEAN,  # type: ignore[assignment]
@@ -492,7 +492,7 @@ def get_cordex(
         List of areas of interest (AOI) to download data for. Typically the output of :func:`~downclim.aoi.get_aoi` function.
     cordex_simulations: pd.DataFrame
         DataFrame containing the list of CORDEX simulations to download. It can be obtained using the : func:`~downclim.dataset.cordex.inspect_cordex` function.list_available_simulations` method.
-    baseline_period: tuple[int, int], optional
+    historical_period: tuple[int, int], optional
         Baseline period for the data, as a tuple of (start year, end year). Defaults to (1980, 2005).
     evaluation_period: tuple[int, int], optional
         Evaluation period for the data, as a tuple of (start year, end year). Defaults to (2006, 2019).
@@ -554,7 +554,7 @@ def get_cordex(
             raise KeyError(msg)
 
     # Define time periods
-    periods_years = [baseline_period, evaluation_period, projection_period]
+    periods_years = [historical_period, evaluation_period, projection_period]
     periods_names = ["baseline", "evaluation", "projection"]
 
     # download
@@ -622,7 +622,7 @@ def get_cordex(
 def get_cordex_old(
     aois: list[gpd.GeoDataFrame],
     variables: list[str],
-    baseline_period: tuple[int, int] = (1980, 2005),
+    historical_period: tuple[int, int] = (1980, 2005),
     evaluation_period: tuple[int, int] = (2006, 2019),
     projection_period: tuple[int, int] = (2071, 2100),
     # time_frequency: str = "mon",
@@ -722,7 +722,7 @@ def get_cordex_old(
     ds_rcp = prep_dataset(ds_rcp)
 
     check_file = "toto.nc"
-    periods = [baseline_period, evaluation_period, projection_period]
+    periods = [historical_period, evaluation_period, projection_period]
     # regrid and write per country
     for aoi in aois:
         base_file = f"{Path(check_file).parent}/{aoi}_base.nc"

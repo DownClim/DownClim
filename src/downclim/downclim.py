@@ -91,7 +91,7 @@ class DownClimContext(BaseModel):
                   {"experiment": ["historical", "ssp585"]}],
         description="CMIP6Context object to use for defining the CMIP6 data required.",
     )
-    baseline_period: tuple[int, int] = Field(
+    historical_period: tuple[int, int] = Field(
         default=(1980, 2005),
         examples=[(1980, 2005)],
         description="Interval of years to use for the baseline period.",
@@ -327,7 +327,7 @@ class DownClimContext(BaseModel):
     @model_validator(mode="after")
     def check_periods_consistency(self) -> Self:
         product = self.baseline_product
-        if self.baseline_period[0] < product.period[0] or self.baseline_period[1] > product.period[1]:
+        if self.historical_period[0] < product.period[0] or self.historical_period[1] > product.period[1]:
             msg = f"""Baseline period must be within the period of the baseline product.
             The period available for {product.product_name} is {self.baseline_product.period}."""
             raise ValueError(msg)
@@ -338,7 +338,7 @@ class DownClimContext(BaseModel):
                 raise ValueError(msg)
         return self
 
-    @field_validator("baseline_period", "evaluation_period", "projection_period", mode="after")
+    @field_validator("historical_period", "evaluation_period", "projection_period", mode="after")
     @classmethod
     def check_periods(
         cls, v: str | Iterable[int, int]
@@ -421,7 +421,7 @@ class DownClimContext(BaseModel):
             get_chelsa2(
                 aoi=self.aoi,
                 variable=self.variable,
-                period=self.baseline_period,
+                period=self.historical_period,
                 frequency=self.time_frequency,
                 aggregation=self.downscaling_aggregation,
                 nb_threads=self.nb_threads,
@@ -432,7 +432,7 @@ class DownClimContext(BaseModel):
         elif self.baseline_product is DataProduct.CHIRPS:
             get_chirps(
                 aoi=self.aoi,
-                period=self.baseline_period,
+                period=self.historical_period,
                 time_frequency=self.time_frequency,
                 aggregation=self.downscaling_aggregation,
                 output_dir=f"{self.output_dir}/{self.baseline_product.product_name}",
@@ -441,7 +441,7 @@ class DownClimContext(BaseModel):
             get_gshtd(
                 aoi=self.aoi,
                 variable=self.variable,
-                period=self.baseline_period,
+                period=self.historical_period,
                 time_frequency=self.time_frequency,
                 aggregation=self.downscaling_aggregation,
                 output_dir=f"{self.output_dir}/{self.baseline_product.product_name}",
@@ -517,7 +517,7 @@ class DownClimContext(BaseModel):
             get_cmip6(
                 aoi=self.aoi,
                 cmip6_simulations=cmip6_simulations,
-                baseline_period=self.baseline_period,
+                historical_period=self.historical_period,
                 evaluation_period=self.evaluation_period,
                 projection_period=self.projection_period,
                 aggregation=self.downscaling_aggregation,
@@ -533,7 +533,7 @@ class DownClimContext(BaseModel):
             get_cordex(
                 aoi=self.aoi,
                 cordex_simulations=cordex_simulations,
-                baseline_period=self.baseline_period,
+                historical_period=self.historical_period,
                 evaluation_period=self.evaluation_period,
                 projection_period=self.projection_period,
                 aggregation=self.downscaling_aggregation,
@@ -590,7 +590,7 @@ class DownClimContext(BaseModel):
         """
         run_downscaling(
             aoi=self.aoi,
-            baseline_period=self.baseline_period,
+            historical_period=self.historical_period,
             projection_period=self.projection_period,
             baseline_product=self.baseline_product,
             cmip6_simulations_to_downscale=cmip6_simulations_to_downscale,
