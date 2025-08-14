@@ -1,0 +1,37 @@
+##
+## All fields except aoi have default values. If the field is not specified, the default value is used.
+####################################################
+# aoi
+aoi: "Vanuatu"
+
+# variables
+variable: ["tas", "tasmin", "tasmax", "pr"]
+time_frequency: "mon"
+
+# downscaling
+downscaling_aggregation: "monthly-mean"
+downscaling_method: "bias_correction"
+
+# data and simulations
+baseline_product: "chelsa2"
+use_cordex: false
+use_cmip6: true
+cordex_context: {}
+cmip6_context: {}
+baseline_period: [1980, 1981]
+evaluation_period: [2017, 2018]
+projection_period: [2099, 2100]
+evaluation_product: ["chirps", "chelsa2"]
+
+# internal computation
+nb_threads: 2
+memory_mb: 4096
+chunks: { "time": 1, "lat": 1000, "lon": 1000 }
+
+# directories
+output_dir: "results"
+tmp_dir: "tmp"
+keep_tmp_dir: "False"
+
+# data access
+esgf_credential: "../config/esgf_credential.yaml"
