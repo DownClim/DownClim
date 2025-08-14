@@ -1,0 +1,109 @@
+# %load_ext autoreload
+# %autoreload 2
+from __future__ import annotations
+
+import ee
+
+from downclim.aoi import get_aoi, get_aoi_informations
+from downclim.dataset.chelsa2 import get_chelsa2
+from downclim.dataset.chirps import get_chirps
+from downclim.dataset.cmip6 import CMIP6Context, get_cmip6
+from downclim.dataset.cordex import CORDEXContext, get_cordex, get_download_scripts
+from downclim.dataset.gshtd import get_gshtd
+from downclim.downclim import DownClimContext
+from downclim.getters import get_baseline_product
+
+# ee connection
+ee.Authenticate(force=True)
+ee.Initialize(opt_url="https://earthengine-highvolume.googleapis.com", project="downclim")
+
+# Get AOI
+aoi1 = get_aoi("Vanuatu")
+aoi2 = get_aoi((10, 10, 20, 20, "box"))
+aois = [aoi1, aoi2]
+aois_names, aois_bounds = get_aoi_informations(aois)
+
+# Get CHELSA data
+get_chelsa2(
+    aoi=[aoi1, aoi2],
+    variable=["pr", "tas", "tasmin", "tasmax"],
+    period=(1980, 1981),
+    keep_tmp_dir=True,
+)
+
+# Get CHIRPS data
+get_chirps(
+    aoi=[aoi1, aoi2],
+    period=(1981, 1982),
+    project = "downclim", # project name for Earth Engine
+)
+
+# Get GSHTD data
+# Warning : starts from 2001
+get_gshtd(
+    aoi=[aoi1, aoi2],
+    variable=["tas", "tasmin", "tasmax"],
+    period=(2006, 2007),
+)
+
+# Define Downclim context
+downclim_context = DownClimContext(
+    aoi=["Vanuatu", (30, 30, 40, 40, "box")],
+    variable=["pr", "tas", "tasmin", "tasmax"],
+    historical_period=(1980, 1981),
+    evaluation_period=(2006, 2007),
+    projection_period=(2071, 2072),
+    time_frequency="mon",
+    downscaling_aggregation="monthly_mean",
+    baseline_product="chelsa2",
+)
+
+# Get CORDEX simulations
+cordex_context = CORDEXContext(
+    domain=["AUS-22", "AFR-44"],
+    #institute=["SMHI"],
+    #driving_model=["IPSL-IPSL-CM5A-MR", "MIROC-MIROC5"],
+    experiment=["historical", "rcp26", "rcp85"],
+    frequency="mon",
+    variable=["pr", "tas"],
+)
+cordex_simulations = cordex_context.list_available_simulations(esgf_credential="config/esgf_credential.yaml")
+cordex_simulations = get_download_scripts(cordex_simulations, esgf_credential="config/esgf_credential.yaml")
+cordex_simulations.to_csv("results/cordex/cordex_simulations.csv")
+
+get_cordex(
+    aoi=aois,
+    cordex_simulations=cordex_simulations,
+    historical_period=(1980, 1981),
+    evaluation_period=(2006, 2007),
+    projection_period=(2071, 2072),
+    output_dir="./results/cordex",
+    tmp_dir = "./results/tmp/cordex",
+    keep_tmp_dir = True,
+    esgf_credential="config/esgf_credential.yaml"
+)
+
+# Get CMIP6 simulations
+cmip6_context = CMIP6Context(
+    project=["ScenarioMIP", "CMIP"],
+    institute=["NOAA-GFDL", "CMCC"],
+    experiment=["ssp126", "historical"],
+    ensemble="r1i1p1f1",
+    frequency="mon",
+    variable=["tas", "pr"],
+    grid_label="gn",
+)
+cmip6_simulations = cmip6_context.list_available_simulations()
+cmip6_simulations.to_csv("results/cmip6/cmip6_simulations.csv")
+
+get_cmip6(
+    aoi=aois,
+    cmip6_simulations=cmip6_simulations,
+    historical_period=(1980, 1981),
+    evaluation_period=(2006, 2007),
+    projection_period=(2071, 2072),
+    output_dir="./results/cmip6",
+)
+
+# Get baseline data
+get_baseline_product(downclim_context)

@@ -1,0 +1,25 @@
+{
+  "template": "https://github.com/scientific-python/cookie",
+  "commit": "aa4c99d1a71ec6cd6dd7eb39531879cdaa4fd8a1",
+  "checkout": null,
+  "context": {
+    "cookiecutter": {
+      "project_name": "DownClim",
+      "org": "sylvainschmitt",
+      "url": "https://github.com/sylvainschmitt/DownClim",
+      "full_name": "Sylvain Schmitt",
+      "email": "sylvain.schmitt@cirad.fr",
+      "project_short_description": "Tool for dynamical downscaling for regional and national climate projections.",
+      "license": "MIT",
+      "backend": "setuptools621",
+      "vcs": true,
+      "__year": "2024",
+      "__project_slug": "downclim",
+      "__type": "pure",
+      "__answers": "",
+      "__ci": "github",
+      "_template": "https://github.com/scientific-python/cookie"
+    }
+  },
+  "directory": null
+}

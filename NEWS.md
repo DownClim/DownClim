@@ -1,47 +1,58 @@
--   DownClim 0.1.0.9046: splitting wkf & msc
--   DownClim 0.1.0.9045: tmf attributes maps
--   DownClim 0.1.0.9044: tmf, black maps, and bias diff, tmf attributes to map
--   DownClim 0.1.0.9043: fixed null values in anomalies, updated eval & bias, tmf to update
--   DownClim 0.1.0.9042: better bias map
--   DownClim 0.1.0.9041: bias map computation and analyses
--   DownClim 0.1.0.9040: new evaluations with chirps and gshtd with corresponding getters
--   DownClim 0.1.0.9039: All results descriptions.
--   DownClim 0.1.0.9038: All results.
--   DownClim 0.1.0.9037: All projections running. Weird pr to remove. get_tmf to dvlp.
--   DownClim 0.1.0.9036: All CMIP6 working but reduced list in list_projections.py
--   DownClim 0.1.0.9035: ds_bc fixed and testing documentation
--   DownClim 0.1.0.9034: few fixes to be shared with Thomas
--   DownClim 0.1.0.9033: lighter and faster wkl with aggregation fused to data retrieval
--   DownClim 0.1.0.9032: cordex with wget
--   DownClim 0.1.0.9031: eval_metrics merged and working, full pipeline milestone 1
--   DownClim 0.1.0.9030: eval_tab merged and working, eval_metrics to add
--   DownClim 0.1.0.9029: eval_tab done, eval_metrics to add
--   DownClim 0.1.0.9028:get_cmip6 working, get_cmip5 dropped, eval_tab in road, eval_metrics and eval_bias to be added
--   DownClim 0.1.0.9027: get_cmip5 & get_cmip6 developed to be validated
--   DownClim 0.1.0.9026: get_chelsa2 fixed & rm activity from keys, CMIP tbc
--   DownClim 0.1.0.9025: fasten get_chelsa2 & merge
--   DownClim 0.1.0.9024: get_cordex multiareas, aggregate, revised downscale_bc and evaluate, pre-merge
--   DownClim 0.1.0.9023: get_chelsa2 multi-areas
--   DownClim 0.1.0.9022: new structure (not working code) for single product dl over areas
--   DownClim 0.1.0.9021: premeeting (few fixes, few issues, and list_cordex.py)
--   DownClim 0.1.0.9020: test genobioinfo
--   DownClim 0.1.0.9019: full minimal working python pipeline
--   DownClim 0.1.0.9018: get_proj python script v1 fully working with dask support in 6'
--   DownClim 0.1.0.9017: fully working get_chelsa2 but without pr 2013 & 2016 in 30'
--   DownClim 0.1.0.9016: get_chelsa2 python script v1
--   DownClim 0.1.0.9015: pipeline structure
--   DownClim 0.1.0.9014: setting dev env with mamba, dev-dc.yml, and renv
--   DownClim 0.1.0.9013: minimal workflow with fused downscale_bc
--   DownClim 0.1.0.9012: post-meeting / pre-branches rearrangement
--   DownClim - xarray 0.1.0.9012: second empty pipeline with simplified python workflow with conda
--   DownClim 0.1.0.9011: first raw pipeline
--   DownClim 0.1.0.9010: NC test - masking land
--   DownClim 0.1.0.9009: NC test - fixing coordinates of the rotated North Pole
--   DownClim 0.1.0.9008: adding CMIP5 to NC test
--   DownClim 0.1.0.9007: NC test for january tas with all available cordex on esgf
--   DownClim 0.1.0.9006: NC test with R
--   DownClim 0.1.0.9005: 1st literature round
--   DownClim 0.1.0.9004: literature reorganisation
--   DownClim 0.1.0.9003: switching to a quarto book to accompany the development
--   DownClim 0.1.0.9002: scheme draft
--   DownClim 0.1.0.9001: init
+- DownClim 0.1.0.9046: splitting wkf & msc
+- DownClim 0.1.0.9045: tmf attributes maps
+- DownClim 0.1.0.9044: tmf, black maps, and bias diff, tmf attributes to map
+- DownClim 0.1.0.9043: fixed null values in anomalies, updated eval & bias, tmf
+  to update
+- DownClim 0.1.0.9042: better bias map
+- DownClim 0.1.0.9041: bias map computation and analyses
+- DownClim 0.1.0.9040: new evaluations with chirps and gshtd with corresponding
+  getters
+- DownClim 0.1.0.9039: All results descriptions.
+- DownClim 0.1.0.9038: All results.
+- DownClim 0.1.0.9037: All projections running. Weird pr to remove. get_tmf to
+  dvlp.
+- DownClim 0.1.0.9036: All CMIP6 working but reduced list in list_projections.py
+- DownClim 0.1.0.9035: ds_bc fixed and testing documentation
+- DownClim 0.1.0.9034: few fixes to be shared with Thomas
+- DownClim 0.1.0.9033: lighter and faster wkl with aggregation fused to data
+  retrieval
+- DownClim 0.1.0.9032: cordex with wget
+- DownClim 0.1.0.9031: eval_metrics merged and working, full pipeline milestone
+  1
+- DownClim 0.1.0.9030: eval_tab merged and working, eval_metrics to add
+- DownClim 0.1.0.9029: eval_tab done, eval_metrics to add
+- DownClim 0.1.0.9028:get_cmip6 working, get_cmip5 dropped, eval_tab in road,
+  eval_metrics and eval_bias to be added
+- DownClim 0.1.0.9027: get_cmip5 & get_cmip6 developed to be validated
+- DownClim 0.1.0.9026: get_chelsa2 fixed & rm activity from keys, CMIP tbc
+- DownClim 0.1.0.9025: fasten get_chelsa2 & merge
+- DownClim 0.1.0.9024: get_cordex multiareas, aggregate, revised downscale_bc
+  and evaluate, pre-merge
+- DownClim 0.1.0.9023: get_chelsa2 multi-areas
+- DownClim 0.1.0.9022: new structure (not working code) for single product dl
+  over areas
+- DownClim 0.1.0.9021: premeeting (few fixes, few issues, and list_cordex.py)
+- DownClim 0.1.0.9020: test genobioinfo
+- DownClim 0.1.0.9019: full minimal working python pipeline
+- DownClim 0.1.0.9018: get_proj python script v1 fully working with dask support
+  in 6'
+- DownClim 0.1.0.9017: fully working get_chelsa2 but without pr 2013 & 2016 in
+  30'
+- DownClim 0.1.0.9016: get_chelsa2 python script v1
+- DownClim 0.1.0.9015: pipeline structure
+- DownClim 0.1.0.9014: setting dev env with mamba, dev-dc.yml, and renv
+- DownClim 0.1.0.9013: minimal workflow with fused downscale_bc
+- DownClim 0.1.0.9012: post-meeting / pre-branches rearrangement
+- DownClim - xarray 0.1.0.9012: second empty pipeline with simplified python
+  workflow with conda
+- DownClim 0.1.0.9011: first raw pipeline
+- DownClim 0.1.0.9010: NC test - masking land
+- DownClim 0.1.0.9009: NC test - fixing coordinates of the rotated North Pole
+- DownClim 0.1.0.9008: adding CMIP5 to NC test
+- DownClim 0.1.0.9007: NC test for january tas with all available cordex on esgf
+- DownClim 0.1.0.9006: NC test with R
+- DownClim 0.1.0.9005: 1st literature round
+- DownClim 0.1.0.9004: literature reorganisation
+- DownClim 0.1.0.9003: switching to a quarto book to accompany the development
+- DownClim 0.1.0.9002: scheme draft
+- DownClim 0.1.0.9001: init

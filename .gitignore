@@ -13,6 +13,7 @@ report.html
 *.err
 *.out
 # other
+.DS_Store
 .cache
 .java
 .oracle_jre_usage
@@ -24,12 +25,22 @@ report.html
 *.sam
 *.csv
 *.sif
+*.nc
 img
 data
 achille
 # credentials
-config/credentials_esgf.yml
+config/esgf_credential.yaml
 test.tsv
 results0
-
-/.quarto/
+# snakemake
+rules/
+# build
+build/
+_build/
+api_reference/
+*egg-info
+*pyc*
+# version
+src/downclim/_version.py
+doc/DownClimContext_example.yaml
