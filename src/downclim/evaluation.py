@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from warnings import warn
 
 import geopandas as gpd
 import numpy as np
@@ -10,6 +11,9 @@ import xarray as xr
 import xesmf as xe
 
 from .aoi import get_aoi_informations
+from .dataset.cmip6 import get_cmip6_context_from_filename
+from .dataset.cordex import get_cordex_context_from_filename
+from .dataset.utils import Aggregation, DataProduct, climatology_filename, get_grid
 
 
 def get_hist(
@@ -225,29 +229,107 @@ def run_hist(
     )
 
 
-def run_eval(
-    aoi: gpd.GeoDataFrame,
-    variables: list[str],
-    input_directory: str,
-    output_directory: str,
-    downscaled_projection_file: str,
-    baseline_file: str,
-    parameters: dict(any, any),
-    save_file: str | None = None,
+def run_evaluation(
+    aoi: list[gpd.GeoDataFrame],
+    historical_period: tuple[int, int],
+    evaluation_period: tuple[int, int],
+    evaluation_product: list[DataProduct],
+    cmip6_simulations_to_evaluate: list[str] | None = None,
+    cordex_simulations_to_evaluate: list[str] | None = None,
+    input_dir: str | None = None,
+    output_dir: str | None = None,
+    evaluation_grid_file: list[str] | None = None,
+    aggregation: Aggregation = Aggregation.MONTHLY_MEAN, # type: ignore[assignment]
 ) -> pd.DataFrame:
-    """Run the evaluation of the projections.
+    """Run the evaluation of the simulations (CMIP6 and / or CORDEX) on the evaluation period.
 
-    Args:
-        downscaled_projection_file (str): File with the downscaled data.
-        baseline_file (str): File with the baseline data.
-        parameters (dict): Parameters of the simulation to evaluate.
-        save_file (str): File to save the evaluation.
+    Parameters
+    ----------
 
-    Returns:
+    Returns
+    -------
         pd.DataFrame: Dataframe with the evaluation.
     """
+
+    # Check input directory
+    if input_dir is None:
+        msg = "Input directory not provided. Using default input directory './results'."
+        warn(msg, stacklevel=1)
+        input_dir = "./results"
+    if not Path(input_dir).is_dir():
+        msg = f"Input directory {input_dir} not found."
+        raise FileNotFoundError(msg)
+
+    # Create output directory
+    if output_dir is None:
+        output_dir = "./results/evaluation"
+        msg  = f"Output directory not provided. Using default output directory {output_dir}."
+        warn(msg, stacklevel=1)
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
+    Path(f"{output_dir}/cmip6").mkdir(parents=True, exist_ok=True)
+    Path(f"{output_dir}/cordex").mkdir(parents=True, exist_ok=True)
+
     # Get AOIs information
-    aois_names, aois_bounds = get_aoi_informations(aoi)
+    aoi_name, _ = get_aoi_informations(aoi)
+
+    for aoi_n in aoi_name:
+        # Check and populate CMIP6 simulations if needed
+        if cmip6_simulations_to_evaluate is None:
+            cmip6_simulations_to_evaluate = [str(p) for p in Path(f"{input_dir}/cmip6").glob(f"{aoi_n}_cmip6*.nc")]
+            msg = f"CMIP6 simulations to evaluate not provided. Using all files found in {input_dir}/cmip6."
+            warn(msg, stacklevel=1)
+        if cmip6_simulations_to_evaluate == []:
+            msg = "No CMIP6 simulations to evaluate found."
+            warn(msg, stacklevel=1)
+
+        # Check and populate CORDEX simulations if needed
+        if cordex_simulations_to_evaluate is None:
+            cordex_simulations_to_evaluate = [str(p) for p in Path(f"{input_dir}/cordex").glob(f"{aoi_n}_cordex*.nc")]
+            msg = f"CORDEX simulations to evaluate not provided. Using all files found in {input_dir}/cordex."
+            warn(msg, stacklevel=1)
+        if cordex_simulations_to_evaluate == []:
+            msg = "No CORDEX simulations to evaluate found."
+            warn(msg, stacklevel=1)
+
+        for product in evaluation_product:
+            # Get the evaluation grid
+            if evaluation_grid_file is None:
+                evaluation_grid_file = f"{input_dir}/{product.product_name}/{product.product_name}_{aoi_n}_grid.nc"
+                msg = f"Evaluation grid file not provided. Using default grid file {evaluation_grid_file} which is extracted from {product.product_name}."
+                warn(msg, stacklevel=1)
+            if not Path(evaluation_grid_file).is_file():
+                msg = f"Evaluation grid file {evaluation_grid_file} not found. Please provide a valid evaluation grid file."
+                raise FileNotFoundError(msg)
+            evaluation_grid = xr.open_dataset(evaluation_grid_file)
+
+            product_file = climatology_filename(f"{input_dir}/{product.product_name}", aoi_n, product, aggregation, evaluation_period)
+            if not Path(product_file).is_file():
+                msg = f"Product file not found for {aoi_n}. Please download it first."
+                raise FileNotFoundError(msg)
+            ds_product = xr.open_dataset(product_file)
+            product_grid = get_grid(ds_product, product)
+            if product_grid.equals(evaluation_grid):
+                ds_product_reggrided = ds_product
+                ds_product_reggrided = ds_product_reggrided.rename({product.lon_lat_names['lon']:'lon', product.lon_lat_names['lat']:'lat'})
+            else:
+                msg = f"Need to regrid from {product_grid} grid to {evaluation_grid} grid... this might take a while."
+                regridder = xe.Regridder(ds_product, evaluation_grid, "bilinear")
+                ds_product_reggrided = regridder(ds_product, keep_attrs=True)
+
+        # Get data for the evaluation period
+        cmip6_aoi_evaluation = {k:v
+            for k,v in {file:get_cmip6_context_from_filename(file) for file in cmip6_simulations_to_evaluate}.items()
+            if aoi_n == v["aoi_n"] and evaluation_period[0] == int(v["tmin"][:4]) and evaluation_period[1] == int(v["tmax"][:4])
+        }
+        cordex_aoi_evaluation = {k:v
+            for k,v in {file:get_cordex_context_from_filename(file) for file in cordex_simulations_to_evaluate}.items()
+            if aoi_n == v["aoi_n"] and evaluation_period[0] == int(v["tmin"][:4]) and evaluation_period[1] == int(v["tmax"][:4])
+        }
+
+
+
+
+
 
     for aoi_n, aoi_b in zip(aois_names, aois_bounds, strict=False):
         ds = xr.open_dataset(downscaled_projection_file).rio.clip(aoi.geometry.values)

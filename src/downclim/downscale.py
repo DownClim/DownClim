@@ -55,15 +55,41 @@ def bias_correction(
 
     return projection
 
+def _get_simulations_per_period(simulations_list: list[str], aoi_n: str, dataproduct: DataProduct, historical_period: tuple[int, int], evaluation_period: tuple[int, int], projection_period: tuple[int, int]) -> tuple[dict[str, dict[str, str]]]:
+    """ Given a list of CMIP6 or CORDEX already downloaded for historical, evaluation and projection periods, will return the list of simulations per period with their corresponding context.
+    """
+    historical = {}
+    evaluation = {}
+    projection = {}
+    if dataproduct == DataProduct.CMIP6:
+        context_getter = get_cmip6_context_from_filename
+    elif dataproduct == DataProduct.CORDEX:
+        context_getter = get_cordex_context_from_filename
+    for k,v in {file:context_getter(file) for file in simulations_list}.items():
+        tmin = int(v["tmin"][:4])
+        tmax = int(v["tmax"][:4])
+        if aoi_n == v["aoi_n"]:
+            if historical_period[0] == tmin and historical_period[1] == tmax:
+                historical[k] = v
+            elif evaluation_period[0] == tmin and evaluation_period[1] == tmax:
+                evaluation[k] = v
+            elif projection_period[0] == tmin and projection_period[1] == tmax:
+                projection[k] = v
+            else:
+                msg = f"Unknown period for {k}: {v['tmin']} - {v['tmax']}. Does not corresponds to historical, evaluation or projection period."
+                warn(msg, stacklevel=1)
+                continue
+    return (historical, evaluation, projection)
 
 def run_downscaling(
     aoi: list[gpd.GeoDataFrame],
     historical_period: tuple[int, int],
+    evaluation_period: tuple[int, int],
     projection_period: tuple[int, int],
     baseline_product: DataProduct,
     cmip6_simulations_to_downscale: list[str] | None = None,
     cordex_simulations_to_downscale: list[str] | None = None,
-    reference_grid_file: str | None = None,
+    downscaling_grid_file: str | None = None,
     aggregation: Aggregation = Aggregation.MONTHLY_MEAN, # type: ignore[assignment]
     method: DownscaleMethod = DownscaleMethod.BIAS_CORRECTION,
     input_dir: str | None = None,
@@ -96,7 +122,7 @@ def run_downscaling(
     if input_dir is None:
         msg = "Input directory not provided. Using default input directory './results'."
         warn(msg, stacklevel=1)
-        input_dir = "./results/"
+        input_dir = "./results"
     if not Path(input_dir).is_dir():
         msg = f"Input directory {input_dir} not found."
         raise FileNotFoundError(msg)
@@ -132,15 +158,15 @@ def run_downscaling(
             msg = "No CORDEX simulations to downscale found."
             warn(msg, stacklevel=1)
 
-        # Get the reference grid
-        if reference_grid_file is None:
-            reference_grid_file = f"{input_dir}/{baseline_product.product_name}/{baseline_product.product_name}_{aoi_n}_grid.nc"
-            msg = f"Reference grid file not provided. Using default grid file {reference_grid_file} which is extracted from {baseline_product.product_name}."
+        # Get the downscaling grid
+        if downscaling_grid_file is None:
+            downscaling_grid_file = f"{input_dir}/{baseline_product.product_name}/{baseline_product.product_name}_{aoi_n}_grid.nc"
+            msg = f"Downscaling grid file not provided. Using default grid file {downscaling_grid_file} which is extracted from {baseline_product.product_name}."
             warn(msg, stacklevel=1)
-        if not Path(reference_grid_file).is_file():
-            msg = f"Reference grid file {reference_grid_file} not found. Please provide a valid reference grid file."
+        if not Path(downscaling_grid_file).is_file():
+            msg = f"Downscaling grid file {downscaling_grid_file} not found. Please provide a valid downscaling grid file."
             raise FileNotFoundError(msg)
-        reference_grid = xr.open_dataset(reference_grid_file)
+        downscaling_grid = xr.open_dataset(downscaling_grid_file)
 
         # Get baseline historical data and interpolate on reference grid (if needed)
         baseline_file = climatology_filename(f"{input_dir}/{baseline_product.product_name}", aoi_n, baseline_product, aggregation, historical_period)
@@ -149,12 +175,15 @@ def run_downscaling(
             raise FileNotFoundError(msg)
         ds_baseline = xr.open_dataset(baseline_file)
         baseline_grid = get_grid(ds_baseline, baseline_product)
-        if baseline_grid.equals(reference_grid):
+        if baseline_grid.equals(downscaling_grid):
             ds_baseline_reggrided = ds_baseline
             ds_baseline_reggrided = ds_baseline_reggrided.rename({baseline_product.lon_lat_names['lon']:'lon', baseline_product.lon_lat_names['lat']:'lat'})
         else:
-            regridder = xe.Regridder(ds_baseline, reference_grid, "bilinear")
+            regridder = xe.Regridder(ds_baseline, downscaling_grid, "bilinear")
             ds_baseline_reggrided = regridder(ds_baseline, keep_attrs=True)
+
+        # Get historical / evaluation / projection data sets
+        cmip6_aoi_historical, cmip6_aoi_evaluation, cmip6_aoi_projection = _get_simulations_per_period(cmip6_simulations_to_downscale, aoi_n, DataProduct.CMIP6, historical_period, evaluation_period, projection_period)
 
         # Get historical data
         cmip6_aoi_historical = {k:v
@@ -196,7 +225,7 @@ def run_downscaling(
             ds_projection = xr.open_dataset(ds_projection_file[0])
 
             # Interpolate the data onto reference grid
-            regridder = xe.Regridder(ds_historical, reference_grid, "bilinear")
+            regridder = xe.Regridder(ds_historical, downscaling_grid, "bilinear")
             ds_historical_reggrided = regridder(ds_historical, keep_attrs=True)
             ds_projection_reggrided = regridder(ds_projection, keep_attrs=True)
 
