@@ -70,7 +70,8 @@ docs = [
   "sphinx-sitemap",
   "nbsphinx",
   "sphinx-design",
-  "sphinx-favicon"
+  "sphinx-favicon",
+  "linkify-it-py"
 ]
 
 [project.urls]

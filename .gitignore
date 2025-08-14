@@ -38,9 +38,10 @@ rules/
 # build
 build/
 _build/
+html/
 api_reference/
 *egg-info
 *pyc*
 # version
 src/downclim/_version.py
-doc/DownClimContext_example.yaml
+docs/DownClimContext_example.yaml
