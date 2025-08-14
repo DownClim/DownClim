@@ -327,7 +327,7 @@ def map_bias(
     baseline: str,
     base_eval: str,
 ) -> None:
-    area_shp = gp.read_file(area_file)
+    area_shp = gpd.read_file(area_file)
     ds = xr.open_dataset(ds_file).rio.clip(area_shp.geometry.values, area_shp.crs)
     if base_eval == baseline:
         base = xr.open_dataset(base_file).rio.clip(

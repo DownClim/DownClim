@@ -64,7 +64,7 @@ def run_downscaling(
     cmip6_simulations_to_downscale: list[str] | None = None,
     cordex_simulations_to_downscale: list[str] | None = None,
     reference_grid_file: str | None = None,
-    aggregation: Aggregation = Aggregation.MONTHLY_MEAN,
+    aggregation: Aggregation = Aggregation.MONTHLY_MEAN, # type: ignore[assignment]
     method: DownscaleMethod = DownscaleMethod.BIAS_CORRECTION,
     input_dir: str | None = None,
     output_dir: str | None = None,

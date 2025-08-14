@@ -209,10 +209,10 @@ def prep_dataset(ds: xr.Dataset, dataset_type: DataProduct) -> xr.Dataset:
     cf = not isinstance(ds["time"].to_numpy()[0], np.datetime64)
     if cf:  # only cftime if not dt but should include more cases
         ds["time"] = [*map(convert_cf_to_dt, ds.time.values)]
-    for key in ds.keys():
+    for key in ds:
         try:
             ds[key] = ds[key] * dataset_type.scale_factor[key] + dataset_type.add_offset[key]
-            ds[key].attrs = asdict(VariableAttributes[key].value)
+            ds[key].attrs = asdict(VariableAttributes[str(key)].value)
         except KeyError as error:
             msg = f"Can't find scale factor and/or offset for variable {key} in dataset {dataset_type.product_name}."
             raise KeyError(msg) from error

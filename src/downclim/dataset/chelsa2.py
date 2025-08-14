@@ -10,10 +10,10 @@ from urllib.request import urlopen
 from warnings import warn
 
 import geopandas as gpd
+import multiprocess as mp
 import pandas as pd
 import rioxarray as rio
 import xarray as xr
-from multiprocess import Pool
 
 from ..aoi import get_aoi_informations
 from .utils import (
@@ -139,8 +139,8 @@ def get_chelsa2(
     aoi: list[gpd.GeoDataFrame],
     variable: list[str],
     period: tuple[int, int] = (1980, 2005),
-    frequency: Frequency = Frequency.MONTHLY,
-    aggregation: Aggregation = Aggregation.MONTHLY_MEAN,
+    frequency: Frequency = Frequency.MONTHLY, # type: ignore[assignment]
+    aggregation: Aggregation = Aggregation.MONTHLY_MEAN, # type: ignore[assignment]
     nb_threads: int = 4,
     output_dir: str | None = None,
     tmp_dir: str | None = None,
@@ -231,7 +231,7 @@ def get_chelsa2(
     # Actual data retrieval with update aois if needed
     if aoi_name:
         paths = []
-        with Pool(nb_threads) as pool:
+        with mp.Pool(nb_threads) as pool:
             for var in variable:
                 paths.append(
                     pool.starmap_async(
@@ -253,7 +253,7 @@ def get_chelsa2(
         for aoi_n in aoi_name:
             output_filename = climatology_filename(output_dir, aoi_n, data_product, aggregation, period)
             print("Merging files for area " + aoi_n + "...")
-            ds_aoi_period = xr.open_mfdataset(
+            ds_aoi_period: xr.Dataset = xr.open_mfdataset(
                 paths2[aoi_n], decode_coords="all", parallel=True
             )
             dmin, dmax = split_period(period)

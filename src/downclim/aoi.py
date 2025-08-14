@@ -5,13 +5,15 @@ from collections.abc import Iterable
 from pathlib import Path
 
 import geopandas as gpd
-import matplotlib.pyplot as plt
+import pandas as pd
 import pygadm
+from shapely import MultiPolygon
+from shapely.geometry import box
 
 
 def get_aoi_informations(
     aoi: Iterable[gpd.GeoDataFrame],
-) -> tuple[list[str], list[tuple[float, float, float, float]]]:
+) -> tuple[list[str], list[pd.DataFrame]]:
     """Retrieve the names and bounds of a list of areas of interest defined by GeoDataFrame.
 
     Parameters
@@ -21,7 +23,7 @@ def get_aoi_informations(
 
     Returns
     -------
-    Tuple[List[str], List[Tuple[float, float, float, float]]]:
+    Tuple[List[str], List[pd.DataFrame]]:
         - List of names of the areas of interest.
         - List of bounds of the areas of interest (as a tuple).
     """
@@ -57,14 +59,11 @@ def get_aoi(
     aoi: str | tuple[float, float, float, float, str] | gpd.GeoDataFrame,
     output_path: str = "results/aois",
     save_aoi_file: bool = False,
-    save_aoi_figure: bool = False,
     save_points_file: bool = False,
-    save_points_figure: bool = False,
     log10_eval_pts: int = 4,
 ) -> gpd.GeoDataFrame:
     """
     Get area of interest administrative boundaries and sample points and save them.
-    Also possible to plot and save figures of the aoi and the points.
     Calls the get_aoi_borders function to retrieve the aoi from the administrative name using GADM.
 
     Parameters
@@ -97,15 +96,12 @@ def get_aoi(
             gdf = gpd.GeoDataFrame({"geometry":ob, "NAME_0":["ob"]})
             ```
     output_path: str
-        path to save the aoi and the points files and figures. Default is "results/aois".
+        path to save the aoi and the points files. Default is "results/aois".
     save_aoi_file: bool
         if True, save the aoi to a shapefile. Default is False.
-    save_aoi_figure: bool
-        if True, plot and save the figure of the aoi. Default is False.
+
     save_points_file: bool
         if True,save the points to a shapefile. Default is False.
-    save_points_figure: bool
-        if True, plot and save the figure of the points. Default is False.
 
     Returns
     -------
@@ -124,8 +120,6 @@ def get_aoi(
             it must be on the format [xmin, ymin, xmax, ymax, name],
             hence a tuple with 4 float defining the bounds of the aoi and a string defining the name."""
             raise ValueError(msg)
-        from shapely import MultiPolygon
-        from shapely.geometry import box
 
         gdf = gpd.GeoDataFrame(
             {"geometry": MultiPolygon([box(*aoi[:-1])]), "NAME_0": [aoi[-1]]}
@@ -144,13 +138,8 @@ def get_aoi(
         msg = "aoi must be a string, a tuple of 4 floats + 1 string or a geopandas.geodataframe"
         raise ValueError(msg)
 
-    if save_points_figure or save_points_file:
-        points = sample_aoi(gdf, log10_eval_pts)
-    if save_aoi_figure:
-        plot_figure(gdf, f"{output_path}/{aoi_name}.png")
-    if save_points_figure:
-        plot_figure(points, f"{output_path}/{aoi_name}_pts.png")
     if save_points_file:
+        points = sample_aoi(gdf, log10_eval_pts)
         save_to_file(points, f"{output_path}/{aoi_name}_pts.shp")
     if save_aoi_file:
         save_to_file(gdf, f"{output_path}/{aoi_name}.shp")
@@ -159,11 +148,6 @@ def get_aoi(
 
 def sample_aoi(aoi: gpd.GeoDataFrame, log10_eval_pts: int = 4) -> gpd.GeoDataFrame:
     return aoi.sample_points(pow(10, log10_eval_pts))
-
-
-def plot_figure(aoi: gpd.GeoDataFrame, filename: str) -> None:
-    aoi.plot()
-    plt.savefig(filename)
 
 
 def save_to_file(gdf: gpd.GeoDataFrame, filename: str) -> None:

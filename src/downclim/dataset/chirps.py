@@ -61,11 +61,11 @@ def _get_chirps_area_period(
     )
     dmin, dmax = split_period(period)
 
-    ic = ee.ImageCollection(DataProduct.CHIRPS.url).filterDate(dmin, dmax)
-    geom = ee.Geometry.Rectangle(*aoi_bounds.to_numpy()[0])
+    ic = ee.ImageCollection(DataProduct.CHIRPS.url).filterDate(dmin, dmax) # type: ignore
+    geom = ee.Geometry.Rectangle(*aoi_bounds.to_numpy()[0]) # type: ignore
     if ic.size().getInfo() == 0:
         msg = f"""
-                No data found for the period {dmin} - {dmax} and variable {variable}.
+                No data found for the period {dmin} - {dmax}.
                 CHIRPS dataset is available from {DataProduct.CHIRPS.period[0]} to {DataProduct.CHIRPS.period[1]}.
                 """
         raise ValueError(msg)
@@ -97,8 +97,8 @@ def _get_chirps_area_period(
 def get_chirps(
     aoi: list[gpd.GeoDataFrame],
     period: tuple[int, int] = (1980, 2005),
-    time_frequency: Frequency = Frequency.MONTHLY,
-    aggregation: Aggregation = Aggregation.MONTHLY_MEAN,
+    time_frequency: Frequency = Frequency.MONTHLY, # type: ignore[assignment]
+    aggregation: Aggregation = Aggregation.MONTHLY_MEAN, # type: ignore[assignment]
     output_dir: str | None = None,
     **kwargs: dict[str, Any],
 ) -> None:

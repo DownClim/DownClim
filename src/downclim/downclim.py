@@ -158,7 +158,7 @@ class DownClimContext(BaseModel):
             Can be either a dictionary with 'openid' and 'password' keys,
             or a path to a yaml file containing these 2 fields.""",
     )
-    ee_project: str = Field(
+    ee_project: str | None = Field(
         default=None,
         description="Earth Engine project ID to use for downloading the data stored in Google Earth Engine.",
     )
@@ -243,7 +243,7 @@ class DownClimContext(BaseModel):
 
     @field_validator("baseline_product", mode="before")
     @classmethod
-    def validate_baseline_product(cls, v: str | DataProduct) -> DataProduct:
+    def validate_baseline_product(cls, v: str | DataProduct | Any) -> DataProduct:
         if isinstance(v, str):
             return cls.get_data_product(v.lower())
         if isinstance(v, DataProduct):
@@ -254,7 +254,7 @@ class DownClimContext(BaseModel):
     @field_validator("evaluation_product", mode="before")
     @classmethod
     def validate_evaluation_product(
-        cls, v: str | DataProduct | Iterable[str] | Iterable[DataProduct] | None, info: ValidationInfo
+        cls, v: str | DataProduct | Iterable[str] | Iterable[DataProduct] | Any | None, info: ValidationInfo
     ) -> list[DataProduct]:
         if v is None:
             msg = "No evaluation products provided. Defaulting to the same product as baseline product."
@@ -271,7 +271,7 @@ class DownClimContext(BaseModel):
 
     @field_validator("downscaling_method", mode="after")
     @classmethod
-    def validate_downscaling_method(cls, v: str | DownscaleMethod) -> DownscaleMethod:
+    def validate_downscaling_method(cls, v: str | DownscaleMethod | Any) -> DownscaleMethod:
         if isinstance(v, str):
             match v.lower():
                 case "bias_correction" | "bias-correction":
@@ -333,7 +333,7 @@ class DownClimContext(BaseModel):
         product = self.baseline_product
         if self.historical_period[0] < product.period[0] or self.historical_period[1] > product.period[1]:
             msg = f"""Baseline period must be within the period of the baseline product.
-            The period available for {product.product_name} is {self.baseline_product.period}."""
+            The period available for {product.product_name} is {product.period}."""
             raise ValueError(msg)
         for product in self.evaluation_product:
             if self.evaluation_period[0] < product.period[0] or self.evaluation_period[1] > product.period[1]:
@@ -345,15 +345,21 @@ class DownClimContext(BaseModel):
     @field_validator("historical_period", "evaluation_period", "projection_period", mode="after")
     @classmethod
     def check_periods(
-        cls, v: str | Iterable[int, int]
+        cls, v: str | tuple[int, int] | list[int]
     ) -> tuple[int, int]:
         if isinstance(v, str):
             v = cls.parse_period(v)
-        if not isinstance(v, Iterable) or len(v) != 2:
+        if not isinstance(v, (list, tuple)) or len(v) != 2:
             msg = """All periods must be defined as an iterable (tuple, list) of 2 integers (start year, end year),
             or as a string in the format 'YYYY-YYYY'."""
             raise ValueError(msg)
-        return tuple(v)
+
+        try:
+            start_year, end_year = int(v[0]), int(v[1])
+        except (ValueError, TypeError):
+            raise ValueError("Period values must be convertible to integers")
+
+        return (start_year, end_year)
 
     @field_validator("projection_period", mode="after")
     @classmethod

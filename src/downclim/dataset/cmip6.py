@@ -435,8 +435,8 @@ def get_cmip6_old(
     historical_period: tuple[int, int] = (1980, 2005),
     evaluation_period: tuple[int, int] = (2006, 2019),
     projection_period: tuple[int, int] = (2071, 2100),
-    time_frequency: Frequency = Frequency.MONTHLY,
-    aggregation: Aggregation = Aggregation.MONTHLY_MEAN,
+    time_frequency: Frequency = Frequency.MONTHLY, # type: ignore[assignment]
+    aggregation: Aggregation = Aggregation.MONTHLY_MEAN, # type: ignore[assignment]
     activity: str | Iterable[str] = ("ScenarioMIP", "CMIP"),
     institution: str = "IPSL",
     source: str = "IPSL-CM6A-LR",
