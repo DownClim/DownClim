@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import warnings
 from collections.abc import Iterable
 from pathlib import Path
 from shutil import copyfile
@@ -22,8 +21,17 @@ from .dataset.gshtd import get_gshtd
 from .dataset.utils import Aggregation, DataProduct, Frequency
 from .downscale import DownscaleMethod, run_downscaling
 
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.FileHandler("app.log"),
+        logging.StreamHandler()
+    ]
+)
+
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.DEBUG)
+logger.info("DownClim starting... Enjoy!")
 
 class DownClimContext(BaseModel):
     """Class to define the general context for the Downclim package.
@@ -97,8 +105,8 @@ class DownClimContext(BaseModel):
         description="Interval of years to use for the baseline period.",
     )
     evaluation_period: tuple[int, int] = Field(
-        default=(2006, 2019),
-        examples=[(2006, 2019)],
+        default=(2006, 2018),
+        examples=[(2006, 2018)],
         description="Interval of years to use for the evaluation period.",
     )
     projection_period: tuple[int, int] = Field(
@@ -258,7 +266,7 @@ class DownClimContext(BaseModel):
     ) -> list[DataProduct]:
         if v is None:
             msg = "No evaluation products provided. Defaulting to the same product as baseline product."
-            warnings.warn(msg, stacklevel=1)
+            logger.warning(msg)
             return [info.data["baseline_product"]]
         if isinstance(v, str):
             return [cls.get_data_product(v.lower())]
@@ -380,14 +388,14 @@ class DownClimContext(BaseModel):
         if not Path(v).exists():
             Path(v).mkdir(parents=True)
             msg = f"Directory {v} did not exist and was created."
-            warnings.warn(msg, stacklevel=1)
+            logger.warning(msg)
         for aoi in info.data["aoi"]:
             aoi_name = aoi["NAME_0"].to_numpy()[0]
             aoi_path = Path(v).joinpath(aoi_name)
             if aoi_path.exists():
                 msg = f"""Directory {aoi_path} already exists.
                 Please act carefully as you may overwrite existing files."""
-                warnings.warn(msg, stacklevel=1)
+                logger.warning(msg)
         return v
 
     @field_validator("esgf_credentials", mode="before")
@@ -424,7 +432,7 @@ class DownClimContext(BaseModel):
         if v is None:
             msg = """No Earth Engine project ID provided.
             You won't be able to access Earth Engine datasets."""
-            warnings.warn(msg, stacklevel=1)
+            logger.warning(msg)
         elif not isinstance(v, str):
             msg = "ee_project: Earth Engine project ID must be a string."
             raise ValueError(msg)
@@ -589,7 +597,8 @@ class DownClimContext(BaseModel):
         self,
         cmip6_simulations_to_downscale: list[str] | None = None,
         cordex_simulations_to_downscale: list[str] | None = None,
-        reference_grid_file: str | None = None,
+        downscaling_grid_file: str | None = None,
+        periods_to_downscale: Iterable[str] = ("evaluation", "projection")
     ) -> None:
         """Runs the downscaling process with the current context.
 
@@ -602,8 +611,10 @@ class DownClimContext(BaseModel):
         cordex_simulations_to_downscale: list[str] | None
             List of paths to CORDEX simulations to downscale. If None, uses all files from
             self.output_dir/cordex. Defaults to None.
-        reference_grid_file: str | None
+        downscaling_grid_file: str | None
             Path to the reference grid file used to regrid the data. If None, will use the grid file from the baseline product.
+        periods_to_downscale: Iterable[str] = ("evaluation", "projection")
+            Iterable of periods to downscale. Must be one or more of the following: "evaluation", "projection", e.g. ["projection"].
 
         Returns
         -------
@@ -613,11 +624,13 @@ class DownClimContext(BaseModel):
         run_downscaling(
             aoi=self.aoi,
             historical_period=self.historical_period,
+            evaluation_period=self.evaluation_period,
             projection_period=self.projection_period,
             baseline_product=self.baseline_product,
             cmip6_simulations_to_downscale=cmip6_simulations_to_downscale,
             cordex_simulations_to_downscale=cordex_simulations_to_downscale,
-            reference_grid_file=reference_grid_file,
+            downscaling_grid_file=downscaling_grid_file,
+            periods_to_downscale=periods_to_downscale,
             aggregation=self.downscaling_aggregation,
             method=self.downscaling_method,
             input_dir=self.output_dir,

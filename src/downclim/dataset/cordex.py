@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 import shutil
 import subprocess
@@ -7,7 +8,6 @@ from collections.abc import Iterable
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
-from warnings import warn
 
 import geopandas as gpd
 import multiprocess as mp
@@ -26,6 +26,8 @@ from .utils import (
     prep_dataset,
     split_period,
 )
+
+logger = logging.getLogger(__name__)
 
 simulations_columns = [
         "project",
@@ -151,14 +153,14 @@ class CORDEXContext(BaseModel):
     ) -> list[str]:
         if v is None:
             msg = "No experiment provided, defaulting to ['historical', 'rcp26']"
-            warn(msg, stacklevel=1)
+            logger.warning(msg)
             return ["historical", "rcp26"]
         if isinstance(v, str):
             return [v]
         if not any(exp == "historical" for exp in v):
             msg = """Historical experiment is mandatory to associate with projections.
                 By default we add 'historical' to the list of experiments."""
-            warn(msg, stacklevel=1)
+            logger.warning(msg)
             return [*v, "historical"]
         return list(v)
 
@@ -169,7 +171,7 @@ class CORDEXContext(BaseModel):
     ) -> list[str]:
         if not project:
             msg = "No project provided, defaulting to 'CORDEX'"
-            warn(msg, stacklevel=1)
+            logger.warning(msg)
             return ["CORDEX"]
         if isinstance(project, str):
             return [project]
@@ -182,7 +184,7 @@ class CORDEXContext(BaseModel):
     ) -> list[str]:
         if not product:
             msg = "No product provided, defaulting to 'output'"
-            warn(msg, stacklevel=1)
+            logger.warning(msg)
             return ["output"]
         if isinstance(product, str):
             return [product]
@@ -233,7 +235,7 @@ class CORDEXContext(BaseModel):
 
         if cordex_simulations.empty:
             msg = "No CORDEX simulations found for the given context"
-            warn(msg, stacklevel=1)
+            logger.warning(msg)
         return cordex_simulations
 
 
@@ -393,7 +395,7 @@ def inspect_cordex(
     ctx = connector.new_context(facets=facets, **context_cleaned)
     if ctx.hit_count == 0:
         msg = "The query has no results"
-        warn(msg, stacklevel=1)
+        logger.warning(msg)
         return pd.DataFrame()
     df_cordex = pd.DataFrame(
         [re.split("[|.]", res.dataset_id, maxsplit=12) for res in ctx.search()]
@@ -583,7 +585,7 @@ def get_cordex(
             # check if aoi is in domain
             if not aoi_in_domain[aoi_n][domain]:
                 msg = f"AOI {aoi_n} is not in domain {domain}. Skipping."
-                warn(msg, stacklevel=1)
+                logger.warning(msg)
                 continue
             # Extend the AOI to avoid edge effects
             ds_aoi = ds.sel(

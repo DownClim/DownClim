@@ -1,15 +1,20 @@
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import asdict, dataclass
 from datetime import datetime as dt
 from enum import Enum
+from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
 import xarray as xr
+import xesmf as xe
 from aenum import MultiValueEnum
+
+logger = logging.getLogger(__name__)
 
 # GDAL configuration to avoid EPSG:4326 warnings
 os.environ["GTIFF_SRS_SOURCE"] = "EPSG"
@@ -291,6 +296,27 @@ def get_grid(ds: xr.Dataset, data_product: DataProduct) -> xr.Dataset:
     """
     return ds[[data_product.lon_lat_names['lon'], data_product.lon_lat_names['lat']]]. \
             rename({data_product.lon_lat_names['lon']:'lon', data_product.lon_lat_names['lat']:'lat'})
+
+def get_regridder(
+    ds_source: xr.Dataset,
+    ds_target: xr.Dataset,
+    source_grid_file: str,
+    target_grid_file: str,
+    output_dir: str,
+    method:str = "bilinear"
+    ) -> xe.Regridder:
+    logger.info("Checking if regridder file from %s to downscaling grid %s already exists",
+        source_grid_file, target_grid_file)
+    regridder_filename = f"{output_dir}/regridder/{Path(source_grid_file).stem}-to-{Path(target_grid_file).stem}.nc"
+    if Path(regridder_filename).is_file():
+        logger.info("Found regridder file %s. Using it for regridding.", regridder_filename)
+        regridder = xe.Regridder(ds_source, ds_target, method, weights=regridder_filename)
+    else:
+        logger.info("""Could not find regridder file in %s.
+                    Creating a new one. This may take a while...""", regridder_filename)
+        regridder = xe.Regridder(ds_source, ds_target, method)
+        regridder.to_netcdf(regridder_filename)
+    return regridder
 
 def save_simulations_list(
     cordex_simulations: pd.DataFrame | None = None,

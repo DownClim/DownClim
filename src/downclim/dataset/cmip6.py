@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import warnings
 from collections.abc import Iterable
 from functools import lru_cache
 from pathlib import Path
@@ -128,7 +127,7 @@ class CMIP6Context(BaseModel):
         if not any(exp == "historical" for exp in v):
             msg = """Historical experiment is mandatory to associate with projections.
                 By default we add 'historical' to the list of experiments."""
-            warnings.warn(msg, stacklevel=2)
+            logger.warning(msg, stacklevel=2)
             return [*v, "historical"]
         return list(v)
 
@@ -166,7 +165,7 @@ class CMIP6Context(BaseModel):
         )
         if cmip6_simulations.empty:
             msg = "No CMIP6 simulations found for the given context."
-            warnings.warn(msg, stacklevel=1)
+            logger.warning(msg)
             return cmip6_simulations
         return cmip6_simulations.reset_index().drop("index", axis=1)
 

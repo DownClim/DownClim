@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import datetime
+import logging
 import shutil
-import warnings
 from dataclasses import asdict
 from pathlib import Path
 from urllib.error import URLError
 from urllib.request import urlopen
-from warnings import warn
 
 import geopandas as gpd
 import multiprocess as mp
@@ -27,6 +26,8 @@ from .utils import (
     prep_dataset,
     split_period,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _get_chelsa2_one_file(
@@ -205,7 +206,7 @@ def get_chelsa2(
 
     # Specific case for CHELSA "pr" data
     if "pr" in variable and any(year in [2013, 2016] for year in years):
-        warnings.warn(
+        logger.warning(
             "CHELSA data for years 2013 and 2016 is not available for precipitation (file is corrupted). \
                       We will not use these years for computing climatology.",
             stacklevel=1,
@@ -225,7 +226,7 @@ def get_chelsa2(
             No action is done for {aoi_n}.
             Please make sure this is the expected behaviour.
             Continue..."""
-            warn(msg, stacklevel=1)
+            logger.warning(msg)
             aoi_name.remove(aoi_n)
 
     # Actual data retrieval with update aois if needed

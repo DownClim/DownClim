@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any
 
 import ee
 import geopandas as gpd
@@ -100,7 +99,7 @@ def get_chirps(
     time_frequency: Frequency = Frequency.MONTHLY, # type: ignore[assignment]
     aggregation: Aggregation = Aggregation.MONTHLY_MEAN, # type: ignore[assignment]
     output_dir: str | None = None,
-    **kwargs: dict[str, Any],
+    ee_project: str | None = None,
 ) -> None:
     """Retrieve CHIRPS precipitation data for a list of areas of interest and periods. This returns one monthly climatological
     xarray.Dataset object / netcdf file for each region and period.
@@ -126,9 +125,8 @@ def get_chirps(
     output_dir: str, optional
         Output directory where the CHIRPS climatology will be stored.
         Defaults to "./results/chirps".
-    **kwargs: Any, optional
-        Connection parameters to the Earth Engine API.
-        It should at least contain "project" with the name of the Earth Engine project.
+    ee_project: str | None = None,
+        Earth Engine project ID to use for the download.
 
     Returns
     -------
@@ -146,7 +144,7 @@ def get_chirps(
     aois_names, aois_bounds = get_aoi_informations(aoi)
 
     # Connect to Earth Engine
-    connect_to_ee(**kwargs)
+    connect_to_ee(ee_project=ee_project)
 
     print("Downloading CHIRPS data...")
     for aoi_n, aoi_b in zip(aois_names, aois_bounds, strict=False):
@@ -161,6 +159,8 @@ def get_chirps(
         ds = _get_chirps_area_period(
             aoi_b, aoi_n, period, time_frequency, aggregation
         )
+        ds.to_netcdf(output_file)
+
         if not Path(f"{output_dir}/{data_product.product_name}_{aoi_n}_grid.nc").is_file():
             # Save the grid for the dataset
             print(f"Saving {data_product.product_name} grid for {aoi_n}...")

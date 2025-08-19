@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
-from warnings import warn
 
 import geopandas as gpd
 import numpy as np
@@ -15,6 +15,7 @@ from .dataset.cmip6 import get_cmip6_context_from_filename
 from .dataset.cordex import get_cordex_context_from_filename
 from .dataset.utils import Aggregation, DataProduct, climatology_filename, get_grid
 
+logger = logging.getLogger(__name__)
 
 def get_hist(
     pred_ds: xr.Dataset,
@@ -228,6 +229,32 @@ def run_hist(
         output_file, sep="\t", index=False
     )
 
+def _check_populate_simulations(
+    simulations: list[str] | None,
+    aoi_n: str,
+    input_dir: str,
+    dataproduct: DataProduct
+) -> list[str]:
+    """Check and populate simulations for a specific AOI and data product.
+
+    Args:
+        simulations (list[str] | None): List of simulations to downscale.
+        aoi_n (str): AOI name.
+        input_dir (str): Input directory where the simulation files are located.
+        dataproduct (DataProduct): Data product.
+
+    Returns:
+        list[str]: List of populated simulations for the AOI and data product.
+    """
+    if simulations is None:
+        simulations = [str(p) for p in Path(f"{input_dir}/{dataproduct.product_name}").glob(f"{aoi_n}_{dataproduct.product_name}*.nc")]
+        msg = f"{dataproduct.product_name.upper()} simulations to downscale not provided. Using all files found in {input_dir}/{dataproduct.product_name}."
+        logger.warning(msg)
+    if simulations == []:
+        msg = f"No {dataproduct.product_name.upper()} simulations to downscale found."
+        logger.warning(msg)
+    return simulations
+
 
 def run_evaluation(
     aoi: list[gpd.GeoDataFrame],
@@ -236,10 +263,10 @@ def run_evaluation(
     evaluation_product: list[DataProduct],
     cmip6_simulations_to_evaluate: list[str] | None = None,
     cordex_simulations_to_evaluate: list[str] | None = None,
-    input_dir: str | None = None,
-    output_dir: str | None = None,
     evaluation_grid_file: list[str] | None = None,
     aggregation: Aggregation = Aggregation.MONTHLY_MEAN, # type: ignore[assignment]
+    input_dir: str | None = None,
+    output_dir: str | None = None,
 ) -> pd.DataFrame:
     """Run the evaluation of the simulations (CMIP6 and / or CORDEX) on the evaluation period.
 
@@ -253,9 +280,9 @@ def run_evaluation(
 
     # Check input directory
     if input_dir is None:
-        msg = "Input directory not provided. Using default input directory './results'."
-        warn(msg, stacklevel=1)
-        input_dir = "./results"
+        input_dir = "./results/downscaled"
+        msg = f"Input directory not provided. Using default input directory {input_dir}."
+        logger.warning(msg)
     if not Path(input_dir).is_dir():
         msg = f"Input directory {input_dir} not found."
         raise FileNotFoundError(msg)
@@ -264,7 +291,7 @@ def run_evaluation(
     if output_dir is None:
         output_dir = "./results/evaluation"
         msg  = f"Output directory not provided. Using default output directory {output_dir}."
-        warn(msg, stacklevel=1)
+        logger.warning(msg)
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     Path(f"{output_dir}/cmip6").mkdir(parents=True, exist_ok=True)
     Path(f"{output_dir}/cordex").mkdir(parents=True, exist_ok=True)
@@ -273,38 +300,30 @@ def run_evaluation(
     aoi_name, _ = get_aoi_informations(aoi)
 
     for aoi_n in aoi_name:
-        # Check and populate CMIP6 simulations if needed
-        if cmip6_simulations_to_evaluate is None:
-            cmip6_simulations_to_evaluate = [str(p) for p in Path(f"{input_dir}/cmip6").glob(f"{aoi_n}_cmip6*.nc")]
-            msg = f"CMIP6 simulations to evaluate not provided. Using all files found in {input_dir}/cmip6."
-            warn(msg, stacklevel=1)
-        if cmip6_simulations_to_evaluate == []:
-            msg = "No CMIP6 simulations to evaluate found."
-            warn(msg, stacklevel=1)
+        # Check and populate simulations to evaluate if needed
+        if not cmip6_simulations_to_evaluate:
+            cmip6_simulations_to_evaluate = _check_populate_simulations(cmip6_simulations_to_evaluate, aoi_n, input_dir, DataProduct.CMIP6)
+        if not cordex_simulations_to_evaluate:
+            cordex_simulations_to_evaluate = _check_populate_simulations(cordex_simulations_to_evaluate, aoi_n, input_dir, DataProduct.CORDEX)
 
-        # Check and populate CORDEX simulations if needed
-        if cordex_simulations_to_evaluate is None:
-            cordex_simulations_to_evaluate = [str(p) for p in Path(f"{input_dir}/cordex").glob(f"{aoi_n}_cordex*.nc")]
-            msg = f"CORDEX simulations to evaluate not provided. Using all files found in {input_dir}/cordex."
-            warn(msg, stacklevel=1)
-        if cordex_simulations_to_evaluate == []:
-            msg = "No CORDEX simulations to evaluate found."
-            warn(msg, stacklevel=1)
-
-        for product in evaluation_product:
+        for i, product in enumerate(evaluation_product):
             # Get the evaluation grid
             if evaluation_grid_file is None:
-                evaluation_grid_file = f"{input_dir}/{product.product_name}/{product.product_name}_{aoi_n}_grid.nc"
-                msg = f"Evaluation grid file not provided. Using default grid file {evaluation_grid_file} which is extracted from {product.product_name}."
-                warn(msg, stacklevel=1)
-            if not Path(evaluation_grid_file).is_file():
-                msg = f"Evaluation grid file {evaluation_grid_file} not found. Please provide a valid evaluation grid file."
+                grid_file = f"{input_dir}/{product.product_name}/{product.product_name}_{aoi_n}_grid.nc"
+                msg = f"Evaluation grid file not provided. Using default grid file {grid_file} which is extracted from {product.product_name}."
+                logger.warning(msg)
+            else:
+                grid_file = evaluation_grid_file[i]
+            if not Path(grid_file).is_file():
+                msg = f"Evaluation grid file {grid_file} not found. Please provide a valid evaluation grid file."
                 raise FileNotFoundError(msg)
-            evaluation_grid = xr.open_dataset(evaluation_grid_file)
+            evaluation_grid = xr.open_dataset(grid_file)
 
             product_file = climatology_filename(f"{input_dir}/{product.product_name}", aoi_n, product, aggregation, evaluation_period)
             if not Path(product_file).is_file():
-                msg = f"Product file not found for {aoi_n}. Please download it first."
+                msg = f"""{product.product_name} file not found for {aoi_n} and period {evaluation_period}.
+                It was expected here: {product_file}
+                Please download it first."""
                 raise FileNotFoundError(msg)
             ds_product = xr.open_dataset(product_file)
             product_grid = get_grid(ds_product, product)
@@ -326,7 +345,34 @@ def run_evaluation(
             if aoi_n == v["aoi_n"] and evaluation_period[0] == int(v["tmin"][:4]) and evaluation_period[1] == int(v["tmax"][:4])
         }
 
+        for k, v in {**cmip6_aoi_evaluation, **cordex_aoi_evaluation}.items():
+            # Get the dataset
+            ds = xr.open_dataset(k)
+            regridder = xe.Regridder(ds, evaluation_grid, "bilinear")
+            ds_reggrided_path = f"{output_dir}/{Path(k).stem}-{Path(grid_file).stem}.nc"
+            if not Path(ds_reggrided_path).is_file():
+                msg = f"Regridded historical dataset {k} already exists. No action taken."
+                logger.warning(msg)
+            else:
+                ds_reggrided = regridder(ds, keep_attrs=True)
+                ds_reggrided.to_netcdf(ds_reggrided_path)
 
+
+            # Get the evaluation metrics
+            if product.product_name == DataProduct.CMIP6.product_name:
+                eval_file = f"{output_dir}/cmip6/{v['aoi_n']}_{v['origin']}_{v['domain']}_{v['institute']}_{v['model']}_{v['experiment']}_{v['ensemble']}_{v['rcm']}_{v['downscaling']}_{v['baseline']}_{aggregation.value}_{evaluation_period[0]}_{evaluation_period[1]}.nc"
+            else:
+                eval_file = f"{output_dir}/cordex/{v['aoi_n']}_{v['origin']}_{v['domain']}_{v['institute']}_{v['model']}_{v['experiment']}_{v['ensemble']}_{v['rcm']}_{v['downscaling']}_{v['baseline']}_{aggregation.value}_{evaluation_period[0]}_{evaluation_period[1]}.nc"
+
+            if not Path(eval_file).is_file():
+                msg = f"Evaluation file {eval_file} not found. Please run the evaluation first."
+                raise FileNotFoundError(msg)
+
+            eval_ds = xr.open_dataset(eval_file)
+            eval_ds = eval_ds.rio.clip(aoi.geometry.values, aoi.crs)
+
+            # Save the evaluation metrics
+            eval_ds.to_netcdf(eval_file)
 
 
 
