@@ -307,11 +307,12 @@ def get_regridder(
     ) -> xe.Regridder:
     logger.info("Checking if regridder file from %s to downscaling grid %s already exists",
         source_grid_file, target_grid_file)
-    regridder_filename = f"{output_dir}/regridder/{Path(source_grid_file).stem}-to-{Path(target_grid_file).stem}.nc"
+    regridder_filename = f"{output_dir}/regridder/regridder-{Path(source_grid_file).stem}-to-{Path(target_grid_file).stem}.nc"
     if Path(regridder_filename).is_file():
         logger.info("Found regridder file %s. Using it for regridding.", regridder_filename)
         regridder = xe.Regridder(ds_source, ds_target, method, weights=regridder_filename)
     else:
+        Path(f"{output_dir}/regridder").mkdir(parents=True, exist_ok=True)
         logger.info("""Could not find regridder file in %s.
                     Creating a new one. This may take a while...""", regridder_filename)
         regridder = xe.Regridder(ds_source, ds_target, method)

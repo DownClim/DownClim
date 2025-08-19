@@ -12,13 +12,7 @@ import xesmf as xe
 from .aoi import get_aoi_informations
 from .dataset.cmip6 import get_cmip6_context_from_filename
 from .dataset.cordex import get_cordex_context_from_filename
-from .dataset.utils import (
-    Aggregation,
-    DataProduct,
-    climatology_filename,
-    get_grid,
-    get_regridder,
-)
+from .dataset.utils import Aggregation, DataProduct, climatology_filename, get_regridder
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +55,29 @@ def bias_correction(
         projection["pr"] = baseline["pr"] * (1 + rel_anomalies_pr)
 
     return projection
+
+def get_simulations_to_downscale(
+    aoi_n:str,
+    historical_period: tuple[int, int],
+    evaluation_period: tuple[int, int],
+    projection_period: tuple[int, int],
+    cmip6_simulations_to_downscale: list[str],
+    cordex_simulations_to_downscale: list[str]
+    ) -> dict[str, dict[str, dict[str, dict[str, str]]]]:
+
+    simulations_to_downscale: dict[str, dict[str, dict[str, dict[str, str]]]] = {}
+    simulations_to_downscale["cmip6"] = {}
+    simulations_to_downscale["cordex"] = {}
+    simulations_to_downscale["cmip6"]["historical"], simulations_to_downscale["cmip6"]["evaluation"], simulations_to_downscale["cmip6"]["projection"] = _get_simulations_per_period(
+        aoi_n, historical_period, evaluation_period, projection_period, cmip6_simulations_to_downscale, DataProduct.CMIP6
+        )
+    simulations_to_downscale["cordex"]["historical"], simulations_to_downscale["cordex"]["evaluation"], simulations_to_downscale["cordex"]["projection"] = _get_simulations_per_period(
+        aoi_n, historical_period, evaluation_period, projection_period, cordex_simulations_to_downscale, DataProduct.CORDEX
+        )
+    logger.info("CMIP6 simulations to downscale: %s", simulations_to_downscale["cmip6"])
+    logger.info("CORDEX simulations to downscale: %s", simulations_to_downscale["cordex"])
+
+    return simulations_to_downscale
 
 def _get_simulations_per_period(
     aoi_n: str,
@@ -250,7 +267,8 @@ def run_downscaling(
             logger.error(msg)
             raise FileNotFoundError(msg)
         ds_baseline = xr.open_dataset(baseline_file)
-        baseline_grid = get_grid(ds_baseline, baseline_product)
+        baseline_grid_file = f"{input_dir}/{baseline_product.product_name}/{baseline_product.product_name}_{aoi_n}_grid.nc"
+        baseline_grid = xr.open_dataset(baseline_grid_file)
         if baseline_grid.equals(downscaling_grid):
             ds_baseline_downscaling_grid = ds_baseline.rename(
                     {baseline_product.lon_lat_names['lon']:'lon', baseline_product.lon_lat_names['lat']:'lat'}
@@ -258,41 +276,46 @@ def run_downscaling(
         else:
             logger.info("Regridding baseline data %s, period %s, for AOI: %s.",
                 baseline_product.product_name, historical_period, aoi_n)
-            regridder = get_regridder(ds_baseline, downscaling_grid, f"{output_dir}/{baseline_product.product_name}_{aoi_n}_grid.nc", downscaling_grid_file, f"{output_dir}/..")
+            regridder = get_regridder(
+                ds_baseline,
+                downscaling_grid,
+                baseline_grid_file,
+                downscaling_grid_file,
+                f"{output_dir}/..")
             ds_baseline_downscaling_grid = regridder(ds_baseline, keep_attrs=True)
 
         # Get historical / evaluation / projection data sets
-        simulations_to_downscale: dict[str, dict[str, dict[str, dict[str, str]]]] = {}
-        simulations_to_downscale["cmip6"] = {}
-        simulations_to_downscale["cordex"] = {}
-        simulations_to_downscale["cmip6"]["historical"], simulations_to_downscale["cmip6"]["evaluation"], simulations_to_downscale["cmip6"]["projection"] = _get_simulations_per_period(
-            aoi_n, historical_period, evaluation_period, projection_period, cmip6_simulations_to_downscale, DataProduct.CMIP6
+        simulations_to_downscale = get_simulations_to_downscale(
+            aoi_n,
+            historical_period,
+            evaluation_period,
+            projection_period,
+            cmip6_simulations_to_downscale,
+            cordex_simulations_to_downscale
             )
-        simulations_to_downscale["cordex"]["historical"], simulations_to_downscale["cordex"]["evaluation"], simulations_to_downscale["cordex"]["projection"] = _get_simulations_per_period(
-            aoi_n, historical_period, evaluation_period, projection_period, cordex_simulations_to_downscale, DataProduct.CORDEX
-            )
-        logger.info("CMIP6 simulations to downscale: %s", simulations_to_downscale["cmip6"])
-        logger.info("CORDEX simulations to downscale: %s", simulations_to_downscale["cordex"])
 
         for k,v in {**simulations_to_downscale["cmip6"]["historical"], **simulations_to_downscale["cordex"]["historical"]}.items():
             # Open historical datasets and interpolate the data onto downscaling grid
+            logger.info("Regridding historical data %s, period %s, for AOI: %s.", k, historical_period, aoi_n)
             ds_historical = xr.open_dataset(k)
             regridder = xe.Regridder(ds_historical, downscaling_grid, "bilinear")
-            historical_reggrided_path = f"{output_dir}/{Path(k).stem}-{Path(downscaling_grid_file).stem}.nc"
-            if not Path(historical_reggrided_path).is_file():
-                msg = f"Regridded historical dataset {k} already exists. No action taken."
-                logger.warning(msg)
+            historical_regridded_file = f"{output_dir}/{v['data_product']}/{Path(k).stem}-{Path(downscaling_grid_file).stem}.nc"
+            if not Path(historical_regridded_file).is_file():
+                logger.warning("Regridded historical dataset for %s already exists: %s. No action taken.", k, historical_regridded_file)
             else:
-                ds_historical_reggrided = regridder(ds_historical, keep_attrs=True)
-                ds_historical_reggrided.to_netcdf(historical_reggrided_path)
+                logger.info("Regridding historical dataset for %s: %s.", k, historical_regridded_file)
+                ds_historical_regridded = regridder(ds_historical, keep_attrs=True)
+                ds_historical_regridded.to_netcdf(historical_regridded_file)
 
             for period in periods_to_downscale:
+                logger.info("Regridding dataset for %s, period %s, for AOI: %s.", k, period, aoi_n)
                 ds_to_downscale = _matching_files(v, period, simulations_to_downscale)
-                ds_to_downscale_reggrided = regridder(ds_to_downscale, keep_attrs=True)
+                ds_to_downscale_regridded = regridder(ds_to_downscale, keep_attrs=True)
 
                 # Downscale
+                logger.info("Downscaling dataset %s, period %s, for AOI: %s using method: %s.", k, period, aoi_n, method.value)
                 if method == DownscaleMethod.BIAS_CORRECTION:
-                    ds_to_downscale_downscaled = bias_correction(ds_baseline_downscaling_grid, ds_historical_reggrided, ds_to_downscale_reggrided)
+                    ds_to_downscale_downscaled = bias_correction(ds_baseline_downscaling_grid, ds_historical_regridded, ds_to_downscale_regridded)
                 else:
                     msg = "Method not implemented yet, only bias_correction is available."
                     raise ValueError(msg)
@@ -300,5 +323,5 @@ def run_downscaling(
                 # prep and write
 
                 ds_to_downscale_downscaled.to_netcdf(
-                    f"{output_dir}/{Path(k).stem}-downscaled-{baseline_product.product_name}_baseline-{Path(downscaling_grid_file).stem}.nc"
+                    f"{output_dir}/{v['data_product']}/{Path(k).stem}-downscaled-{baseline_product.product_name}_baseline-{Path(downscaling_grid_file).stem}.nc"
                 )
