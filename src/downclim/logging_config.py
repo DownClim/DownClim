@@ -56,6 +56,9 @@ class DownClimLoggerConfig:
         logger = logging.getLogger(cls._logger_name)
         logger.setLevel(level)
 
+        # Prevent propagation to root logger to avoid duplicates
+        logger.propagate = False
+
         # Remove existing handlers to avoid duplicates
         for handler in logger.handlers[:]:
             logger.removeHandler(handler)

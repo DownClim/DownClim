@@ -343,7 +343,7 @@ class DownClimContext(BaseModel):
     @field_validator("historical_period", "evaluation_period", "projection_period", mode="after")
     @classmethod
     def check_periods(
-        cls, v: str | tuple[int, int] | list[int]
+        cls, v: str | tuple[int] | list[int]
     ) -> tuple[int, int]:
         if isinstance(v, str):
             v = cls.parse_period(v)
@@ -362,7 +362,7 @@ class DownClimContext(BaseModel):
 
     @field_validator("projection_period", mode="after")
     @classmethod
-    def check_projection_period(cls, v: Iterable[int, int]) -> tuple[int, int]:
+    def check_projection_period(cls, v: Iterable[int]) -> tuple[int, int]:
         if v[0] <= 2015:
             msg = """Beginning of projection period must start in 2015 or after.
             This corresponds to the first year of the CMIP6 / CORDEX scenarios."""
@@ -651,9 +651,9 @@ def define_DownClimContext_from_file(file: str) -> DownClimContext: # pylint: di
         DownClimContext: The context read from the file.
 
     Raises:
-        ValueError: if YAML has no or wrong 'aoi' mandatory value
         FileNotFoundError: if the file does not exist.
     """
+    logger.info("Reading DownClimContext from %s", file)
     # Read YAML file
     try:
         with Path(file).open(encoding="utf-8") as f:
@@ -661,9 +661,5 @@ def define_DownClimContext_from_file(file: str) -> DownClimContext: # pylint: di
     except FileNotFoundError as e:
         msg = f"File {file} does not exist."
         raise FileNotFoundError(msg) from e
-
-    if not context.get("aoi"):
-        msg = "Mandatory field 'aoi' is not present in the yaml file."
-        raise ValueError(msg)
 
     return DownClimContext.model_validate(context)

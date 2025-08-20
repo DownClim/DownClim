@@ -75,8 +75,8 @@ def get_simulations_to_downscale(
     simulations_to_downscale["cordex"]["historical"], simulations_to_downscale["cordex"]["evaluation"], simulations_to_downscale["cordex"]["projection"] = _get_simulations_per_period(
         aoi_n, historical_period, evaluation_period, projection_period, cordex_simulations_to_downscale, DataProduct.CORDEX
         )
-    logger.info("CMIP6 simulations to downscale: %s", simulations_to_downscale["cmip6"])
-    logger.info("CORDEX simulations to downscale: %s", simulations_to_downscale["cordex"])
+    logger.info("   CMIP6 simulations to downscale: %s", simulations_to_downscale["cmip6"])
+    logger.info("   CORDEX simulations to downscale: %s", simulations_to_downscale["cordex"])
 
     return simulations_to_downscale
 
@@ -143,8 +143,8 @@ def _matching_files(
     v: dict[str, str],
     period: str,
     simulations_to_downscale: dict[str, dict[str, dict[str, dict[str, str]]]]
-    ) -> xr.Dataset:
-    """Find matching files for a given simulation context and returns the associated dataset.
+    ) -> str:
+    """Find matching files for a given simulation context and returns the associated path to the dataset.
 
     Args:
         v (dict[str, str]): Simulation context.
@@ -152,22 +152,22 @@ def _matching_files(
         simulations_to_downscale (dict[str, dict[str, dict[str, str]]]): Simulations to downscale.
 
     Returns:
-        xr.Dataset: Dataset of matching file.
+        str: Path of the dataset of matching file.
     """
     # Define keys for CMIP6 and CORDEX to identify simulations
     simulations_keys = {
         "cmip6" : ["institute", "source", "ensemble"],
         "cordex" : ["domain", "driving_model", "rcm_name", "ensemble", "rcm_version"]
     }
-    ds_files = [f for f,d in simulations_to_downscale[v["data_product"]][period].items()
+    files = [f for f,d in simulations_to_downscale[v["data_product"]][period].items()
         if all(d[key] == v[key] for key in simulations_keys[v["data_product"]])]
-    if len(ds_files) == 0:
+    if len(files) == 0:
         msg = f"No matching files found for {v} in {period}"
         raise FileNotFoundError(msg)
-    if len(ds_files) > 1:
-        msg = f"Multiple conflicting matching files found for {v} in {period}: {ds_files}"
+    if len(files) > 1:
+        msg = f"Multiple conflicting matching files found for {v} in {period}: {files}"
         raise FileExistsError(msg)
-    return xr.open_dataset(ds_files[0])
+    return files[0]
 
 
 def run_downscaling(
@@ -277,12 +277,12 @@ def run_downscaling(
         baseline_grid_file = f"{input_dir}/{baseline_product.product_name}/{baseline_product.product_name}_{aoi_n}_grid.nc"
         baseline_grid = xr.open_dataset(baseline_grid_file)
         if baseline_grid.equals(downscaling_grid):
+            logger.info("       Baseline grid matches downscaling grid")
             ds_baseline_downscaling_grid = ds_baseline.rename(
                     {baseline_product.lon_lat_names['lon']:'lon', baseline_product.lon_lat_names['lat']:'lat'}
                 )
         else:
-            logger.info("       Regridding baseline data %s, period %s, for AOI: %s.",
-                baseline_product.product_name, historical_period, aoi_n)
+            logger.info("       Regridding baseline data on the downscaling grid.")
             regridder = get_regridder(
                 ds_baseline,
                 downscaling_grid,
@@ -308,28 +308,28 @@ def run_downscaling(
             regridder = xe.Regridder(ds_historical, downscaling_grid, "bilinear")
             historical_regridded_file = f"{output_dir}/{v['data_product']}/{Path(k).stem}-{Path(downscaling_grid_file).stem}.nc"
             if Path(historical_regridded_file).is_file():
-                logger.warning("Regridded historical dataset for %s already exists: %s. No action taken.", k, historical_regridded_file)
+                logger.warning("        Regridded historical dataset for %s already exists: %s. No action taken.", k, historical_regridded_file)
                 ds_historical_regridded = xr.open_dataset(historical_regridded_file)
             else:
-                logger.info("Regridding historical dataset for %s: %s.", k, historical_regridded_file)
+                logger.info("       Regridding historical dataset for %s: %s.", k, historical_regridded_file)
                 ds_historical_regridded = regridder(ds_historical, keep_attrs=True)
                 ds_historical_regridded.to_netcdf(historical_regridded_file)
 
             for period in periods_to_downscale:
-                logger.info("Regridding dataset for %s, period %s, for AOI: %s.", k, period, aoi_n)
-                ds_to_downscale = _matching_files(v, period, simulations_to_downscale)
+                file_to_downscale = _matching_files(v, period, simulations_to_downscale)
+                logger.info("       Regridding dataset for %s, period: %s, for AOI: %s.", file_to_downscale, period, aoi_n)
+                ds_to_downscale = xr.open_dataset(file_to_downscale)
                 ds_to_downscale_regridded = regridder(ds_to_downscale, keep_attrs=True)
 
                 # Downscale
-                logger.info("       Downscaling dataset %s, period %s, for AOI: %s using method: %s.", k, period, aoi_n, method.value)
+                logger.info("       Downscaling dataset %s, period: %s, for AOI: %s using method: %s.", file_to_downscale, period, aoi_n, method.value)
                 if method == DownscaleMethod.BIAS_CORRECTION:
                     ds_to_downscale_downscaled = bias_correction(ds_baseline_downscaling_grid, ds_historical_regridded, ds_to_downscale_regridded)
                 else:
                     msg = "Method not implemented yet, only bias_correction is available."
                     raise ValueError(msg)
 
-                # prep and write
-
-                ds_to_downscale_downscaled.to_netcdf(
-                    f"{output_dir}/{v['data_product']}/{Path(k).stem}-downscaled-{baseline_product.product_name}_baseline-{Path(downscaling_grid_file).stem}.nc"
-                )
+                # Save downscaled dataset
+                downscaled_file = f"{output_dir}/{v['data_product']}/{Path(file_to_downscale).stem}-downscaled-{baseline_product.product_name}_baseline-{Path(downscaling_grid_file).stem}.nc"
+                logger.info("       Saving downscaled dataset into: %s", downscaled_file)
+                ds_to_downscale_downscaled.to_netcdf(downscaled_file)
