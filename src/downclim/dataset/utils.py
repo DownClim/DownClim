@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import os
 from dataclasses import asdict, dataclass
 from datetime import datetime as dt
@@ -14,7 +13,9 @@ import xarray as xr
 import xesmf as xe
 from aenum import MultiValueEnum
 
-logger = logging.getLogger(__name__)
+from ..logging_config import get_logger
+
+logger = get_logger(__name__)
 
 # GDAL configuration to avoid EPSG:4326 warnings
 os.environ["GTIFF_SRS_SOURCE"] = "EPSG"

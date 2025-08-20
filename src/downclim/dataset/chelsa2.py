@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import datetime
-import logging
 import shutil
 from dataclasses import asdict
 from pathlib import Path
@@ -15,6 +14,7 @@ import rioxarray as rio
 import xarray as xr
 
 from ..aoi import get_aoi_informations
+from ..logging_config import get_logger
 from .utils import (
     Aggregation,
     DataProduct,
@@ -27,7 +27,7 @@ from .utils import (
     split_period,
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _get_chelsa2_one_file(

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import logging
+from collections.abc import Iterable
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -13,8 +13,9 @@ from .aoi import get_aoi_informations
 from .dataset.cmip6 import get_cmip6_context_from_filename
 from .dataset.cordex import get_cordex_context_from_filename
 from .dataset.utils import Aggregation, DataProduct, climatology_filename, get_regridder
+from .logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class DownscaleMethod(Enum):
     """Class to define the downscaling methods available."""
@@ -178,7 +179,7 @@ def run_downscaling(
     cmip6_simulations_to_downscale: list[str] | None = None,
     cordex_simulations_to_downscale: list[str] | None = None,
     downscaling_grid_file: str | None = None,
-    periods_to_downscale: list[str] | None = None,
+    periods_to_downscale: Iterable[str] | None = None,
     aggregation: Aggregation = Aggregation.MONTHLY_MEAN, # type: ignore[assignment]
     method: DownscaleMethod = DownscaleMethod.BIAS_CORRECTION,
     input_dir: str | None = None,
@@ -211,6 +212,7 @@ def run_downscaling(
     """
 
     # Check input directory
+    logger.info("Checking input directory...")
     if input_dir is None:
         msg = "Input directory not provided. Using default input directory './results'."
         logger.warning(msg)
@@ -220,10 +222,12 @@ def run_downscaling(
         raise FileNotFoundError(msg)
 
     # Create output directory
+    logger.info("Checking output directory...")
     if output_dir is None:
         output_dir = "./results/downscaled"
         msg  = f"Output directory not provided. Using default output directory {output_dir}."
         logger.warning(msg)
+    logger.info("Creating output directories: %s, %s, %s, %s", output_dir, f"{output_dir}/cmip6", f"{output_dir}/cordex", f"{output_dir}/../regridder")
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     Path(f"{output_dir}/cmip6").mkdir(parents=True, exist_ok=True)
     Path(f"{output_dir}/cordex").mkdir(parents=True, exist_ok=True)
@@ -233,6 +237,7 @@ def run_downscaling(
     aoi_name, _ = get_aoi_informations(aoi)
 
     # Define periods to downscale
+    logger.info("Checking periods to downscale...")
     if periods_to_downscale is None:
         periods_to_downscale = ['evaluation', 'projection']
         msg = f"Periods to downscale not provided. Using default periods {periods_to_downscale}."
@@ -243,12 +248,14 @@ def run_downscaling(
 
     for aoi_n in aoi_name:
         # Check and populate simulations to downscale
+        logger.info("   Checking simulations to downscale for AOI: %s", aoi_n)
         if not cmip6_simulations_to_downscale:
             cmip6_simulations_to_downscale = _check_populate_simulations(cmip6_simulations_to_downscale, aoi_n, input_dir, DataProduct.CMIP6)
         if not cordex_simulations_to_downscale:
             cordex_simulations_to_downscale = _check_populate_simulations(cordex_simulations_to_downscale, aoi_n, input_dir, DataProduct.CORDEX)
 
         # Get the downscaling grid
+        logger.info("       Checking downscaling grid file...")
         if downscaling_grid_file is None:
             downscaling_grid_file = f"{input_dir}/{baseline_product.product_name}/{baseline_product.product_name}_{aoi_n}_grid.nc"
             msg = f"Downscaling grid file not provided. Using default grid file {downscaling_grid_file} which is extracted from {baseline_product.product_name}"
@@ -260,11 +267,11 @@ def run_downscaling(
         downscaling_grid = xr.open_dataset(downscaling_grid_file)
 
         # Get baseline historical data and interpolate on downscaling grid (if needed)
+        logger.info("       Checking baseline historical data...")
         baseline_file = climatology_filename(f"{input_dir}/{baseline_product.product_name}", aoi_n, baseline_product, aggregation, historical_period)
         if not Path(baseline_file).is_file():
             msg = f"""Baseline historical data not found: {baseline_product.product_name} for {aoi_n} should be located in {baseline_file}.
             Please download it first by using the `downclim.downclim.DownClimContext.download_data` method."""
-            logger.error(msg)
             raise FileNotFoundError(msg)
         ds_baseline = xr.open_dataset(baseline_file)
         baseline_grid_file = f"{input_dir}/{baseline_product.product_name}/{baseline_product.product_name}_{aoi_n}_grid.nc"
@@ -274,7 +281,7 @@ def run_downscaling(
                     {baseline_product.lon_lat_names['lon']:'lon', baseline_product.lon_lat_names['lat']:'lat'}
                 )
         else:
-            logger.info("Regridding baseline data %s, period %s, for AOI: %s.",
+            logger.info("       Regridding baseline data %s, period %s, for AOI: %s.",
                 baseline_product.product_name, historical_period, aoi_n)
             regridder = get_regridder(
                 ds_baseline,
@@ -296,12 +303,13 @@ def run_downscaling(
 
         for k,v in {**simulations_to_downscale["cmip6"]["historical"], **simulations_to_downscale["cordex"]["historical"]}.items():
             # Open historical datasets and interpolate the data onto downscaling grid
-            logger.info("Regridding historical data %s, period %s, for AOI: %s.", k, historical_period, aoi_n)
+            logger.info("       Regridding historical data %s, period %s, for AOI: %s.", k, historical_period, aoi_n)
             ds_historical = xr.open_dataset(k)
             regridder = xe.Regridder(ds_historical, downscaling_grid, "bilinear")
             historical_regridded_file = f"{output_dir}/{v['data_product']}/{Path(k).stem}-{Path(downscaling_grid_file).stem}.nc"
-            if not Path(historical_regridded_file).is_file():
+            if Path(historical_regridded_file).is_file():
                 logger.warning("Regridded historical dataset for %s already exists: %s. No action taken.", k, historical_regridded_file)
+                ds_historical_regridded = xr.open_dataset(historical_regridded_file)
             else:
                 logger.info("Regridding historical dataset for %s: %s.", k, historical_regridded_file)
                 ds_historical_regridded = regridder(ds_historical, keep_attrs=True)
@@ -313,7 +321,7 @@ def run_downscaling(
                 ds_to_downscale_regridded = regridder(ds_to_downscale, keep_attrs=True)
 
                 # Downscale
-                logger.info("Downscaling dataset %s, period %s, for AOI: %s using method: %s.", k, period, aoi_n, method.value)
+                logger.info("       Downscaling dataset %s, period %s, for AOI: %s using method: %s.", k, period, aoi_n, method.value)
                 if method == DownscaleMethod.BIAS_CORRECTION:
                     ds_to_downscale_downscaled = bias_correction(ds_baseline_downscaling_grid, ds_historical_regridded, ds_to_downscale_regridded)
                 else:

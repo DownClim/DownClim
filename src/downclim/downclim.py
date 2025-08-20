@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from collections.abc import Iterable
 from pathlib import Path
 from shutil import copyfile
@@ -20,18 +19,10 @@ from .dataset.cordex import CORDEXContext, get_cordex, inspect_cordex
 from .dataset.gshtd import get_gshtd
 from .dataset.utils import Aggregation, DataProduct, Frequency
 from .downscale import DownscaleMethod, run_downscaling
+from .logging_config import get_logger
 
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.FileHandler("app.log"),
-        logging.StreamHandler()
-    ]
-)
-
-logger = logging.getLogger(__name__)
-logger.info("DownClim starting... Enjoy!")
+# Obtenir le logger pour ce module
+logger = get_logger(__name__)
 
 class DownClimContext(BaseModel):
     """Class to define the general context for the Downclim package.
@@ -197,16 +188,15 @@ class DownClimContext(BaseModel):
 
     @classmethod
     def get_data_product(cls, v: str) -> DataProduct:
-        match v:
-            case "chelsa" | "chelsa2":
-                return DataProduct.CHELSA
-            case "gshtd":
-                return DataProduct.GSHTD
-            case "chirps":
-                return DataProduct.CHIRPS
-            case _:
-                msg = "Only CHELSA, CHIRPS or GSHTD can be used as a baseline product so far."
-                raise ValueError(msg)
+        if v in ("chelsa", "chelsa2"):
+            return DataProduct.CHELSA
+        if v == "gshtd":
+            return DataProduct.GSHTD
+        if v == "chirps":
+            return DataProduct.CHIRPS
+
+        msg = "Only CHELSA, CHIRPS or GSHTD can be used as a baseline product so far."
+        raise ValueError(msg)
 
     @field_validator("aoi", mode="before")
     @classmethod
@@ -281,16 +271,16 @@ class DownClimContext(BaseModel):
     @classmethod
     def validate_downscaling_method(cls, v: str | DownscaleMethod | Any) -> DownscaleMethod:
         if isinstance(v, str):
-            match v.lower():
-                case "bias_correction" | "bias-correction":
-                    return DownscaleMethod.BIAS_CORRECTION
-                case "quantile_mapping" | "quantile-mapping":
-                    return DownscaleMethod.QUANTILE_MAPPING
-                case "dynamical":
-                    return DownscaleMethod.DYNAMICAL
-                case _:
-                    msg = "Only 'bias_correction', 'quantile_mapping' or 'dynamical' methods are available so far."
-                    raise ValueError(msg)
+            v_lower = v.lower()
+            if v_lower in ("bias_correction", "bias-correction"):
+                return DownscaleMethod.BIAS_CORRECTION
+            if v_lower in ("quantile_mapping", "quantile-mapping"):
+                return DownscaleMethod.QUANTILE_MAPPING
+            if v_lower == "dynamical":
+                return DownscaleMethod.DYNAMICAL
+
+            msg = "Only 'bias_correction', 'quantile_mapping' or 'dynamical' methods are available so far."
+            raise ValueError(msg)
         if isinstance(v, DownscaleMethod):
             return v
         msg = "Downscaling method must be a string or a DownscaleMethod."
@@ -357,15 +347,16 @@ class DownClimContext(BaseModel):
     ) -> tuple[int, int]:
         if isinstance(v, str):
             v = cls.parse_period(v)
-        if not isinstance(v, (list, tuple)) or len(v) != 2:
+        if not isinstance(v, list | tuple) or len(v) != 2:
             msg = """All periods must be defined as an iterable (tuple, list) of 2 integers (start year, end year),
             or as a string in the format 'YYYY-YYYY'."""
             raise ValueError(msg)
 
         try:
             start_year, end_year = int(v[0]), int(v[1])
-        except (ValueError, TypeError):
-            raise ValueError("Period values must be convertible to integers")
+        except (ValueError, TypeError) as e:
+            msg = "Period values must be convertible to integers"
+            raise ValueError(msg) from e
 
         return (start_year, end_year)
 
@@ -583,6 +574,7 @@ class DownClimContext(BaseModel):
         Returns:
             None: the data is downloaded in the output directory.
         """
+        logger.info("DownClim starting... Enjoy!")
         logger.info("Starting data download...")
         logger.info("   Downloading baseline product...")
         self._get_baseline_product()

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import re
 import shutil
 import subprocess
@@ -17,6 +16,7 @@ import xarray as xr
 from pydantic import BaseModel, Field, field_validator
 
 from ..aoi import get_aoi_informations
+from ..logging_config import get_logger
 from .connectors import connect_to_esgf
 from .utils import (
     Aggregation,
@@ -27,7 +27,7 @@ from .utils import (
     split_period,
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 simulations_columns = [
         "project",
