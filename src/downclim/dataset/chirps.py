@@ -9,20 +9,23 @@ import pandas as pd
 import xarray as xr
 
 from ..aoi import get_aoi_informations
+from ..logging_config import get_logger
 from .connectors import connect_to_ee
 from .utils import (
     Aggregation,
     DataProduct,
     Frequency,
     VariableAttributes,
+    check_output_dir,
     climatology_filename,
-    get_grid,
     get_monthly_climatology,
     get_monthly_mean,
     prep_dataset,
+    save_grid_file,
     split_period,
 )
 
+logger = get_logger(__name__)
 
 def _get_chirps_area_period(
     aoi_bounds: pd.DataFrame,
@@ -55,9 +58,7 @@ def _get_chirps_area_period(
     xr.Dataset
         CHIRPS data for the given area of interest and time period.
     """
-    print(
-        f'Getting CHIRPS data for period : "{period}" and area of interest : "{aoi_name}"'
-    )
+    logger.info('Getting CHIRPS data for period : "%s" and area of interest : "%s"', period, aoi_name)
     dmin, dmax = split_period(period)
 
     ic = ee.ImageCollection(DataProduct.CHIRPS.url).filterDate(dmin, dmax) # type: ignore
@@ -67,6 +68,7 @@ def _get_chirps_area_period(
                 No data found for the period {dmin} - {dmax}.
                 CHIRPS dataset is available from {DataProduct.CHIRPS.period[0]} to {DataProduct.CHIRPS.period[1]}.
                 """
+        logger.error(msg)
         raise ValueError(msg)
 
     ds = xr.open_mfdataset(
@@ -74,6 +76,8 @@ def _get_chirps_area_period(
     )
 
     ds = ds.transpose("time", "lat", "lon")
+    ds = ds.rio.set_spatial_dims(x_dim="lon", y_dim="lat")
+    ds = ds.rio.write_crs("epsg:4362")
     ds = ds.rename({"precipitation": "pr"})
     ds = prep_dataset(ds, DataProduct.CHIRPS)
     ds.pr.attrs = asdict(VariableAttributes["pr"])
@@ -82,12 +86,14 @@ def _get_chirps_area_period(
         ds = get_monthly_mean(ds)
     else:
         msg = "Currently only monthly time frequency available!"
+        logger.error(msg)
         raise ValueError(msg)
 
     if aggregation == Aggregation.MONTHLY_MEAN:
         ds = get_monthly_climatology(ds)
     else:
         msg = "Currently only monthly-means aggregation available!"
+        logger.error(msg)
         raise ValueError(msg)
 
     return ds
@@ -133,12 +139,12 @@ def get_chirps(
     No output from the function. New file with dataset is stored in the output_dir.
     """
 
+    logger.info("Downloading CHIRPS data...")
+
     data_product = DataProduct.CHIRPS
 
     # Create output directory
-    if output_dir is None:
-        output_dir = f"./results/{data_product.product_name}"
-    Path(output_dir).mkdir(parents=True, exist_ok=True)
+    output_dir = check_output_dir(output_dir, f"./results/{data_product.product_name}")
 
     # Get AOIs information
     aois_names, aois_bounds = get_aoi_informations(aoi)
@@ -146,14 +152,13 @@ def get_chirps(
     # Connect to Earth Engine
     connect_to_ee(ee_project=ee_project)
 
-    print("Downloading CHIRPS data...")
     for aoi_n, aoi_b in zip(aois_names, aois_bounds, strict=False):
         # First check if the data is already downloaded
         output_file = climatology_filename(output_dir, aoi_n, data_product, aggregation, period)
         if Path(output_file).is_file():
-            print(
-                f"""File {output_file} already exists, skipping...
-                If this is not the expected behaviour, please remove the file and run the function again."""
+            logger.warning(
+                """File %s already exists, skipping...
+                If this is not the expected behaviour, please remove the file and run the function again.""", output_file
             )
             continue
         ds = _get_chirps_area_period(
@@ -161,8 +166,4 @@ def get_chirps(
         )
         ds.to_netcdf(output_file)
 
-        if not Path(f"{output_dir}/{data_product.product_name}_{aoi_n}_grid.nc").is_file():
-            # Save the grid for the dataset
-            print(f"Saving {data_product.product_name} grid for {aoi_n}...")
-            grid = get_grid(ds, data_product)
-            grid.to_netcdf(f"{output_dir}/{data_product.product_name}_{aoi_n}_grid.nc")
+        save_grid_file(output_dir, data_product, aoi_n, ds)

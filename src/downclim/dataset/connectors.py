@@ -9,6 +9,10 @@ import yaml
 from pyesgf.logon import LogonManager
 from pyesgf.search import SearchConnection
 
+from ..logging_config import get_logger
+
+logger = get_logger(__name__)
+
 data_urls = {
     "ee": "https://earthengine-highvolume.googleapis.com",
     "gcsfs_cmip6": "https://storage.googleapis.com/cmip6/cmip6-zarr-consolidated-stores.csv",
@@ -35,17 +39,18 @@ def connect_to_ee(ee_project: str | None = None) -> None:
     try:
         # Try to get project config to check if already authenticated
         project_config = ee.data.getProjectConfig()
-        print(f"Already connected to Earth Engine with project '{project_config['name'].split('/')[1]}'.")
+        logger.info(f"Already connected to Earth Engine with project '{project_config['name'].split('/')[1]}'.")
     except ee.EEException:
-        print("""You are not logged in to Earth Engine.
+        logger.warning("""You are not logged in to Earth Engine.
               Authenticating to Earth Engine...""")
         try:
             ee.Authenticate()
             ee.Initialize(opt_url='https://earthengine-highvolume.googleapis.com', project=ee_project)
-            print("Successfully connected to Earth Engine.")
+            logger.info("Successfully connected to Earth Engine.")
         except Exception as e:
-            print(f"An error occurred: {e}")
-            print("Please provide a 'project' when connecting to Earth Engine.")
+            msg = "Failed to connect to Earth Engine. Please run `ee.Initialize(project = my_project_id)` first."
+            logger.error(msg)
+            raise RuntimeError(msg) from e
 
 def connect_to_gcfs(token: str = "anon") -> gcsfs.GCSFileSystem:
     """
@@ -61,6 +66,7 @@ def connect_to_gcfs(token: str = "anon") -> gcsfs.GCSFileSystem:
     gcsfs.GCSFileSystem: GCFS connector.
     """
 
+    logger.info("Connecting to Google Cloud File System...")
     return gcsfs.GCSFileSystem(token=token)
 
 
@@ -75,9 +81,12 @@ def connect_to_esgf(esgf_credential: str, server: str) -> pyesgf.SearchConnectio
     server: str
         Name of the ESGF server.
 
-    R
-
+    Returns
+    -------
+    pyesgf.SearchConnection: ESGF search connection.
     """
+
+    logger.info("Connecting to ESGF server %s...", server)
     with Path(esgf_credential).open(encoding="utf-8") as stream:
         creds = yaml.safe_load(stream)
     lm = LogonManager()

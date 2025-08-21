@@ -94,6 +94,7 @@ class DownClimLoggerConfig:
         cls._configured = True
 
         # Initial message
+        logger.info("DownClim starting... Enjoy!")
         logger.info("DownClim logging system initialized")
 
         return logger

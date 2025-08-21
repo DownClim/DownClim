@@ -19,6 +19,7 @@ from .dataset.cordex import CORDEXContext, get_cordex, inspect_cordex
 from .dataset.gshtd import get_gshtd
 from .dataset.utils import Aggregation, DataProduct, Frequency
 from .downscale import DownscaleMethod, run_downscaling
+from .evaluation import run_evaluation
 from .logging_config import get_logger
 
 # Obtenir le logger pour ce module
@@ -204,7 +205,7 @@ class DownClimContext(BaseModel):
         cls,
         v: str | tuple[float, float, float, float, str] | gpd.GeoDataFrame | list[Any],
     ) -> list[gpd.GeoDataFrame]:
-        return [get_aoi(aoi) for aoi in cls.to_list(v)]
+        return [get_aoi(aoi, save_aoi_file=True) for aoi in cls.to_list(v)]
 
     @field_validator("variable", mode="after")
     @classmethod
@@ -574,7 +575,6 @@ class DownClimContext(BaseModel):
         Returns:
             None: the data is downloaded in the output directory.
         """
-        logger.info("DownClim starting... Enjoy!")
         logger.info("Starting data download...")
         logger.info("   Downloading baseline product...")
         self._get_baseline_product()
@@ -585,7 +585,7 @@ class DownClimContext(BaseModel):
         logger.info("Data download complete.")
 
 
-    def downscale(
+    def run_downscaling(
         self,
         cmip6_simulations_to_downscale: list[str] | None = None,
         cordex_simulations_to_downscale: list[str] | None = None,
@@ -628,6 +628,20 @@ class DownClimContext(BaseModel):
             input_dir=self.output_dir,
         )
 
+    def run_evaluation(self) -> None:
+        """Runs the evaluation process with the current context.
+
+        Returns
+        -------
+        None: the evaluation process is run and results are saved in the output directory.
+
+        """
+        run_evaluation(
+            aoi=self.aoi,
+            evaluation_period=self.evaluation_period,
+            evaluation_product=self.evaluation_product,
+        )
+
 
 def generate_DownClimContext_template_file(output_file: str) -> None: # pylint: disable=invalid-name
     """Generates a template file for DownClimContext.
@@ -658,8 +672,10 @@ def define_DownClimContext_from_file(file: str) -> DownClimContext: # pylint: di
     try:
         with Path(file).open(encoding="utf-8") as f:
             context = yaml.safe_load(f)
+        logger.info("Context read successfully from %s", file)
     except FileNotFoundError as e:
         msg = f"File {file} does not exist."
+        logger.error(msg)
         raise FileNotFoundError(msg) from e
 
     return DownClimContext.model_validate(context)

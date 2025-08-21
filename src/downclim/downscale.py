@@ -12,7 +12,14 @@ import xesmf as xe
 from .aoi import get_aoi_informations
 from .dataset.cmip6 import get_cmip6_context_from_filename
 from .dataset.cordex import get_cordex_context_from_filename
-from .dataset.utils import Aggregation, DataProduct, climatology_filename, get_regridder
+from .dataset.utils import (
+    Aggregation,
+    DataProduct,
+    check_input_dir,
+    check_output_dir,
+    climatology_filename,
+    get_regridder,
+)
 from .logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -211,27 +218,13 @@ def run_downscaling(
         ValueError: If a required parameter is invalid.
     """
 
+    logger.info("Starting downscaling process...")
     # Check input directory
-    logger.info("Checking input directory...")
-    if input_dir is None:
-        msg = "Input directory not provided. Using default input directory './results'."
-        logger.warning(msg)
-        input_dir = "./results"
-    if not Path(input_dir).is_dir():
-        msg = f"Input directory {input_dir} not found."
-        raise FileNotFoundError(msg)
+    input_dir = check_input_dir(input_dir, "./results")
 
     # Create output directory
-    logger.info("Checking output directory...")
-    if output_dir is None:
-        output_dir = "./results/downscaled"
-        msg  = f"Output directory not provided. Using default output directory {output_dir}."
-        logger.warning(msg)
-    logger.info("Creating output directories: %s, %s, %s, %s", output_dir, f"{output_dir}/cmip6", f"{output_dir}/cordex", f"{output_dir}/../regridder")
-    Path(output_dir).mkdir(parents=True, exist_ok=True)
-    Path(f"{output_dir}/cmip6").mkdir(parents=True, exist_ok=True)
-    Path(f"{output_dir}/cordex").mkdir(parents=True, exist_ok=True)
-    Path(f"{output_dir}/../regridder").mkdir(parents=True, exist_ok=True)
+    output_dir = check_output_dir(output_dir, "./results/downscaled", ["cmip6", "cordex", "../regridder"])
+
 
     # Get AOIs information
     aoi_name, _ = get_aoi_informations(aoi)
@@ -240,8 +233,7 @@ def run_downscaling(
     logger.info("Checking periods to downscale...")
     if periods_to_downscale is None:
         periods_to_downscale = ['evaluation', 'projection']
-        msg = f"Periods to downscale not provided. Using default periods {periods_to_downscale}."
-        logger.warning(msg)
+        logger.warning("Periods to downscale not provided. Using default periods %s.", periods_to_downscale)
     if not all(period in ['evaluation', 'projection'] for period in periods_to_downscale):
         msg = f"Invalid periods found in {periods_to_downscale}. Please provide valid periods : ['evaluation', 'projection']."
         raise ValueError(msg)
@@ -278,9 +270,7 @@ def run_downscaling(
         baseline_grid = xr.open_dataset(baseline_grid_file)
         if baseline_grid.equals(downscaling_grid):
             logger.info("       Baseline grid matches downscaling grid")
-            ds_baseline_downscaling_grid = ds_baseline.rename(
-                    {baseline_product.lon_lat_names['lon']:'lon', baseline_product.lon_lat_names['lat']:'lat'}
-                )
+            ds_baseline_downscaling_grid = ds_baseline
         else:
             logger.info("       Regridding baseline data on the downscaling grid.")
             regridder = get_regridder(

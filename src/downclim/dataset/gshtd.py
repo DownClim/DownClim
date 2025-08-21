@@ -10,19 +10,23 @@ import pandas as pd
 import xarray as xr
 
 from ..aoi import get_aoi_informations
+from ..logging_config import get_logger
 from .connectors import connect_to_ee
 from .utils import (
     Aggregation,
     DataProduct,
     Frequency,
     VariableAttributes,
+    check_output_dir,
     climatology_filename,
-    get_grid,
     get_monthly_climatology,
     get_monthly_mean,
     prep_dataset,
+    save_grid_file,
     split_period,
 )
+
+logger = get_logger(__name__)
 
 
 # funs
@@ -37,8 +41,9 @@ def _get_gshtd_single(
     """
     Internal function. Get GSHTD data for one area of interest, one variable and one time period.
     """
-    print(
-        f'Getting GSHTD data for period : "{period}" and variable : "{variable}" on area of interest : "{aoi_name}"'
+    logger.info(
+        'Getting GSHTD data for period : "%s" and variable : "%s" on area of interest : "%s"',
+        period, variable, aoi_name
     )
     dmin, dmax = split_period(period)
 
@@ -57,6 +62,8 @@ def _get_gshtd_single(
     )
 
     ds = ds.transpose("time", "lat", "lon")
+    ds = ds.rio.set_spatial_dims(x_dim="lon", y_dim="lat")
+    ds = ds.rio.write_crs("epsg:4362")
     ds = ds.rename({"b1": variable})
     ds = prep_dataset(ds, DataProduct.GSHTD)
     ds[variable].attrs = asdict(VariableAttributes[variable])
@@ -119,28 +126,28 @@ def get_gshtd(
     No output from the function. New file with dataset is stored in the output_dir.
     """
 
+    logger.info("Downloading GSHTD data...")
+
     data_product = DataProduct.GSHTD
 
     # Create output directory
-    if output_dir is None:
-        output_dir = f"./results/{data_product.product_name}"
-    Path(output_dir).mkdir(parents=True, exist_ok=True)
+    output_dir = check_output_dir(output_dir, f"./results/{data_product.product_name}")
 
     # Get AOIs information
     aoi_name, aoi_bound = get_aoi_informations(aoi)
 
+    # Connect to Earth Engine
     connect_to_ee(ee_project=ee_project)
 
-    print("Downloading GSHTD data...")
     for aoi_n, aoi_b in zip(aoi_name, aoi_bound, strict=False):
         # First check if the data is already downloaded
         output_file = (
             climatology_filename(output_dir, aoi_n, data_product, aggregation, tuple(period))
         )
         if Path(output_file).is_file():
-            print(
-                f"""File {output_file} already exists, skipping...
-                If this is not the expected behaviour, please remove the file and run the function again."""
+            logger.warning(
+                """File %s already exists, skipping...
+                If this is not the expected behaviour, please remove the file and run the function again.""", output_file
             )
             continue
         ds = xr.merge(
@@ -151,8 +158,4 @@ def get_gshtd(
         )
         ds.to_netcdf(output_file)
 
-        if not Path(f"{output_dir}/{data_product.product_name}_{aoi_n}_grid.nc").is_file():
-            # Save the grid for the dataset
-            print(f"Saving {data_product.product_name} grid for {aoi_n}...")
-            grid = get_grid(ds, data_product)
-            grid.to_netcdf(f"{output_dir}/{data_product.product_name}_{aoi_n}_grid.nc")
+        save_grid_file(output_dir, data_product, aoi_n, ds)

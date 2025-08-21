@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from collections.abc import Iterable
 from functools import lru_cache
 from pathlib import Path
@@ -14,17 +13,19 @@ import xesmf as xe
 from pydantic import BaseModel, Field, field_validator
 
 from ..aoi import get_aoi_informations
+from ..logging_config import get_logger
 from .connectors import connect_to_gcfs
 from .utils import (
     Aggregation,
     DataProduct,
     Frequency,
+    check_output_dir,
     get_monthly_climatology,
     prep_dataset,
     split_period,
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class CMIP6Context(BaseModel):
@@ -352,9 +353,7 @@ def get_cmip6(
         chunks = {"time": 100, "lat": 400, "lon": 400}
 
     # Create output directory
-    if output_dir is None:
-        output_dir = f"./results/{data_product.product_name}"
-    Path(output_dir).mkdir(parents=True, exist_ok=True)
+    output_dir = check_output_dir(output_dir, f"./results/{data_product.product_name}")
 
     # Get AOIs information
     aois_names, aois_bounds = get_aoi_informations(aoi)
