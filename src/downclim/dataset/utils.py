@@ -4,12 +4,18 @@ import os
 from dataclasses import asdict, dataclass
 from datetime import datetime as dt
 from enum import Enum
+from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
 import xarray as xr
+import xesmf as xe
 from aenum import MultiValueEnum
+
+from ..logging_config import get_logger
+
+logger = get_logger(__name__)
 
 # GDAL configuration to avoid EPSG:4326 warnings
 os.environ["GTIFF_SRS_SOURCE"] = "EPSG"
@@ -189,7 +195,7 @@ def convert_cf_to_dt(t: np.datetime64) -> dt:
     return dt.strptime(str(t), "%Y-%m-%d %H:%M:%S")
 
 
-def prep_dataset(ds: xr.Dataset, dataset_type: DataProduct) -> xr.Dataset:
+def prep_dataset(ds: xr.Dataset, data_product: DataProduct) -> xr.Dataset:
     """Prepare a dataset for downscaling.
 
     Some operations (scaling and offsets) are applied to the dataset depending on
@@ -198,7 +204,7 @@ def prep_dataset(ds: xr.Dataset, dataset_type: DataProduct) -> xr.Dataset:
     Parameters
     ----------
     ds: xr.Dataset original dataset to prepare.
-    dataset_type: DataProduct
+    data_product: DataProduct
         Type of dataset to prepare.
 
     Returns
@@ -211,12 +217,12 @@ def prep_dataset(ds: xr.Dataset, dataset_type: DataProduct) -> xr.Dataset:
         ds["time"] = [*map(convert_cf_to_dt, ds.time.values)]
     for key in ds:
         try:
-            ds[key] = ds[key] * dataset_type.scale_factor[key] + dataset_type.add_offset[key]
+            ds[key] = ds[key] * data_product.scale_factor[key] + data_product.add_offset[key]
             ds[key].attrs = asdict(VariableAttributes[str(key)].value)
         except KeyError as error:
-            msg = f"Can't find scale factor and/or offset for variable {key} in dataset {dataset_type.product_name}."
+            msg = f"Can't find scale factor and/or offset for variable {key} in dataset {data_product.product_name}."
             raise KeyError(msg) from error
-    return ds
+    return ds.rename({data_product.lon_lat_names['lon']:'lon', data_product.lon_lat_names['lat']:'lat'})
 
 
 def get_monthly_mean(ds: xr.Dataset) -> xr.Dataset:
@@ -277,20 +283,27 @@ def climatology_filename(outputdir: str, aoi_name: str, dataproduct: DataProduct
     """
     return f"{outputdir}/{aoi_name}_{dataproduct.product_name}_{aggregation.value}_{period[0]}-{period[1]}.nc"
 
-def get_grid(ds: xr.Dataset, data_product: DataProduct) -> xr.Dataset:
-    """Save the reference grid for a given data product.
-
-    Args:
-        ds (xr.Dataset): The dataset containing the reference grid.
-        data_product (DataProduct): The data product for which to save the reference grid.
-
-    Returns
-    -------
-    xr.Dataset
-        The reference grid dataset.
-    """
-    return ds[[data_product.lon_lat_names['lon'], data_product.lon_lat_names['lat']]]. \
-            rename({data_product.lon_lat_names['lon']:'lon', data_product.lon_lat_names['lat']:'lat'})
+def get_regridder(
+    ds_source: xr.Dataset,
+    ds_target: xr.Dataset,
+    source_grid_file: str,
+    target_grid_file: str,
+    output_dir: str,
+    method:str = "bilinear"
+    ) -> xe.Regridder:
+    logger.info("Checking if regridder file from %s to downscaling grid %s already exists",
+        source_grid_file, target_grid_file)
+    regridder_filename = f"{output_dir}/regridder/regridder-{Path(source_grid_file).stem}-to-{Path(target_grid_file).stem}.nc"
+    if Path(regridder_filename).is_file():
+        logger.info("Found regridder file %s. Using it for regridding.", regridder_filename)
+        regridder = xe.Regridder(ds_source, ds_target, method, weights=regridder_filename)
+    else:
+        Path(f"{output_dir}/regridder").mkdir(parents=True, exist_ok=True)
+        logger.info("""Could not find regridder file in %s.
+                    Creating a new one. This may take a while...""", regridder_filename)
+        regridder = xe.Regridder(ds_source, ds_target, method)
+        regridder.to_netcdf(regridder_filename)
+    return regridder
 
 def save_simulations_list(
     cordex_simulations: pd.DataFrame | None = None,
@@ -313,3 +326,86 @@ def save_simulations_list(
     pd.concat([cordex_simulations, cmip6_simulations]).to_csv(
         output_file, sep=",", index=False
     )
+
+def check_input_dir(input_dir: str | None, default_dir: str) -> str:
+    """
+    Check the input directory.
+
+    Details: During the data workflow, we need to access already created dataset. We need to ensure the directory exists.
+
+    Parameters
+    ----------
+    input_dir: str | None
+        The input directory where the data is located.
+    default_dir: str
+        The default input directory to use if input_dir is None.
+
+    Returns
+    -------
+    str
+        The input directory that was checked.
+    """
+    logger.info("Checking input directory...")
+    if input_dir is None:
+        input_dir = default_dir
+        logger.warning("Input directory not provided. Using default input directory %s", input_dir)
+    if not Path(input_dir).is_dir():
+        msg = f"Input directory {input_dir} not found."
+        logger.error(msg)
+        raise FileNotFoundError(msg)
+    return input_dir
+
+def check_output_dir(output_dir: str | None, default_dir: str, subdir: list[str] | None = None) -> str:
+    """
+    Check and create the output directory and subdirectories.
+
+    Details: When data is downloaded and needs to be saved, we need to ensure that we can create the necessary directories.
+
+    Parameters
+    ----------
+    output_dir: str | None
+        The output directory where the results will be saved.
+    default_dir: str
+        The default output directory to use if output_dir is None.
+    subdir: list[str] | None
+        A list of subdirectories to create within the output_dir.
+
+    Returns
+    -------
+    str
+        The output directory that was checked or created.
+    """
+
+    logger.info("Checking output directory...")
+    if output_dir is None:
+        output_dir = default_dir
+        logger.warning("Output directory not provided. Using default output directory %s.", output_dir)
+    logger.info("Setting output directory: %s", output_dir)
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
+    if subdir:
+        for subdir in subdir:
+            logger.info("Creating output subdirectory: %s", f"{output_dir}/{subdir}")
+            Path(f"{output_dir}/{subdir}").mkdir(parents=True, exist_ok=True)
+    return output_dir
+
+def save_grid_file(output_dir:str, data_product: DataProduct, aoi_name: str, ds: xr.Dataset) -> None:
+    """
+    Save the grid file of the given dataset (only if not already present)
+
+    Parameters
+    ----------
+    output_dir: str
+        The output directory where the grid file will be saved.
+    data_product: DataProduct
+        The data product for which to save the grid file.
+    aoi_name: str
+        The name of the area of interest.
+    ds: xr.Dataset
+        The dataset for which to save the grid file.
+    """
+    grid_file = f"{output_dir}/{data_product.product_name}_{aoi_name}_grid.nc"
+    if not Path(grid_file).is_file():
+        # Save the grid for the dataset
+        logger.info(    "Saving %s grid for %s...", data_product.product_name, aoi_name)
+        ds[["lon","lat"]].to_netcdf(grid_file)
+        logger.info(    "Grid saved to %s", grid_file)

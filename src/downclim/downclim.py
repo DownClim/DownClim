@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import logging
-import warnings
 from collections.abc import Iterable
 from pathlib import Path
 from shutil import copyfile
@@ -21,9 +19,11 @@ from .dataset.cordex import CORDEXContext, get_cordex, inspect_cordex
 from .dataset.gshtd import get_gshtd
 from .dataset.utils import Aggregation, DataProduct, Frequency
 from .downscale import DownscaleMethod, run_downscaling
+from .evaluation import run_evaluation
+from .logging_config import get_logger
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.DEBUG)
+# Obtenir le logger pour ce module
+logger = get_logger(__name__)
 
 class DownClimContext(BaseModel):
     """Class to define the general context for the Downclim package.
@@ -97,8 +97,8 @@ class DownClimContext(BaseModel):
         description="Interval of years to use for the baseline period.",
     )
     evaluation_period: tuple[int, int] = Field(
-        default=(2006, 2019),
-        examples=[(2006, 2019)],
+        default=(2006, 2018),
+        examples=[(2006, 2018)],
         description="Interval of years to use for the evaluation period.",
     )
     projection_period: tuple[int, int] = Field(
@@ -189,16 +189,15 @@ class DownClimContext(BaseModel):
 
     @classmethod
     def get_data_product(cls, v: str) -> DataProduct:
-        match v:
-            case "chelsa" | "chelsa2":
-                return DataProduct.CHELSA
-            case "gshtd":
-                return DataProduct.GSHTD
-            case "chirps":
-                return DataProduct.CHIRPS
-            case _:
-                msg = "Only CHELSA, CHIRPS or GSHTD can be used as a baseline product so far."
-                raise ValueError(msg)
+        if v in ("chelsa", "chelsa2"):
+            return DataProduct.CHELSA
+        if v == "gshtd":
+            return DataProduct.GSHTD
+        if v == "chirps":
+            return DataProduct.CHIRPS
+
+        msg = "Only CHELSA, CHIRPS or GSHTD can be used as a baseline product so far."
+        raise ValueError(msg)
 
     @field_validator("aoi", mode="before")
     @classmethod
@@ -206,7 +205,7 @@ class DownClimContext(BaseModel):
         cls,
         v: str | tuple[float, float, float, float, str] | gpd.GeoDataFrame | list[Any],
     ) -> list[gpd.GeoDataFrame]:
-        return [get_aoi(aoi) for aoi in cls.to_list(v)]
+        return [get_aoi(aoi, save_aoi_file=True) for aoi in cls.to_list(v)]
 
     @field_validator("variable", mode="after")
     @classmethod
@@ -258,7 +257,7 @@ class DownClimContext(BaseModel):
     ) -> list[DataProduct]:
         if v is None:
             msg = "No evaluation products provided. Defaulting to the same product as baseline product."
-            warnings.warn(msg, stacklevel=1)
+            logger.warning(msg)
             return [info.data["baseline_product"]]
         if isinstance(v, str):
             return [cls.get_data_product(v.lower())]
@@ -273,16 +272,16 @@ class DownClimContext(BaseModel):
     @classmethod
     def validate_downscaling_method(cls, v: str | DownscaleMethod | Any) -> DownscaleMethod:
         if isinstance(v, str):
-            match v.lower():
-                case "bias_correction" | "bias-correction":
-                    return DownscaleMethod.BIAS_CORRECTION
-                case "quantile_mapping" | "quantile-mapping":
-                    return DownscaleMethod.QUANTILE_MAPPING
-                case "dynamical":
-                    return DownscaleMethod.DYNAMICAL
-                case _:
-                    msg = "Only 'bias_correction', 'quantile_mapping' or 'dynamical' methods are available so far."
-                    raise ValueError(msg)
+            v_lower = v.lower()
+            if v_lower in ("bias_correction", "bias-correction"):
+                return DownscaleMethod.BIAS_CORRECTION
+            if v_lower in ("quantile_mapping", "quantile-mapping"):
+                return DownscaleMethod.QUANTILE_MAPPING
+            if v_lower == "dynamical":
+                return DownscaleMethod.DYNAMICAL
+
+            msg = "Only 'bias_correction', 'quantile_mapping' or 'dynamical' methods are available so far."
+            raise ValueError(msg)
         if isinstance(v, DownscaleMethod):
             return v
         msg = "Downscaling method must be a string or a DownscaleMethod."
@@ -345,25 +344,26 @@ class DownClimContext(BaseModel):
     @field_validator("historical_period", "evaluation_period", "projection_period", mode="after")
     @classmethod
     def check_periods(
-        cls, v: str | tuple[int, int] | list[int]
+        cls, v: str | tuple[int] | list[int]
     ) -> tuple[int, int]:
         if isinstance(v, str):
             v = cls.parse_period(v)
-        if not isinstance(v, (list, tuple)) or len(v) != 2:
+        if not isinstance(v, list | tuple) or len(v) != 2:
             msg = """All periods must be defined as an iterable (tuple, list) of 2 integers (start year, end year),
             or as a string in the format 'YYYY-YYYY'."""
             raise ValueError(msg)
 
         try:
             start_year, end_year = int(v[0]), int(v[1])
-        except (ValueError, TypeError):
-            raise ValueError("Period values must be convertible to integers")
+        except (ValueError, TypeError) as e:
+            msg = "Period values must be convertible to integers"
+            raise ValueError(msg) from e
 
         return (start_year, end_year)
 
     @field_validator("projection_period", mode="after")
     @classmethod
-    def check_projection_period(cls, v: Iterable[int, int]) -> tuple[int, int]:
+    def check_projection_period(cls, v: Iterable[int]) -> tuple[int, int]:
         if v[0] <= 2015:
             msg = """Beginning of projection period must start in 2015 or after.
             This corresponds to the first year of the CMIP6 / CORDEX scenarios."""
@@ -380,14 +380,14 @@ class DownClimContext(BaseModel):
         if not Path(v).exists():
             Path(v).mkdir(parents=True)
             msg = f"Directory {v} did not exist and was created."
-            warnings.warn(msg, stacklevel=1)
+            logger.warning(msg)
         for aoi in info.data["aoi"]:
             aoi_name = aoi["NAME_0"].to_numpy()[0]
             aoi_path = Path(v).joinpath(aoi_name)
             if aoi_path.exists():
                 msg = f"""Directory {aoi_path} already exists.
                 Please act carefully as you may overwrite existing files."""
-                warnings.warn(msg, stacklevel=1)
+                logger.warning(msg)
         return v
 
     @field_validator("esgf_credentials", mode="before")
@@ -424,7 +424,7 @@ class DownClimContext(BaseModel):
         if v is None:
             msg = """No Earth Engine project ID provided.
             You won't be able to access Earth Engine datasets."""
-            warnings.warn(msg, stacklevel=1)
+            logger.warning(msg)
         elif not isinstance(v, str):
             msg = "ee_project: Earth Engine project ID must be a string."
             raise ValueError(msg)
@@ -585,11 +585,12 @@ class DownClimContext(BaseModel):
         logger.info("Data download complete.")
 
 
-    def downscale(
+    def run_downscaling(
         self,
         cmip6_simulations_to_downscale: list[str] | None = None,
         cordex_simulations_to_downscale: list[str] | None = None,
-        reference_grid_file: str | None = None,
+        downscaling_grid_file: str | None = None,
+        periods_to_downscale: Iterable[str] = ("evaluation", "projection")
     ) -> None:
         """Runs the downscaling process with the current context.
 
@@ -602,8 +603,10 @@ class DownClimContext(BaseModel):
         cordex_simulations_to_downscale: list[str] | None
             List of paths to CORDEX simulations to downscale. If None, uses all files from
             self.output_dir/cordex. Defaults to None.
-        reference_grid_file: str | None
+        downscaling_grid_file: str | None
             Path to the reference grid file used to regrid the data. If None, will use the grid file from the baseline product.
+        periods_to_downscale: Iterable[str] = ("evaluation", "projection")
+            Iterable of periods to downscale. Must be one or more of the following: "evaluation", "projection", e.g. ["projection"].
 
         Returns
         -------
@@ -613,14 +616,30 @@ class DownClimContext(BaseModel):
         run_downscaling(
             aoi=self.aoi,
             historical_period=self.historical_period,
+            evaluation_period=self.evaluation_period,
             projection_period=self.projection_period,
             baseline_product=self.baseline_product,
             cmip6_simulations_to_downscale=cmip6_simulations_to_downscale,
             cordex_simulations_to_downscale=cordex_simulations_to_downscale,
-            reference_grid_file=reference_grid_file,
+            downscaling_grid_file=downscaling_grid_file,
+            periods_to_downscale=periods_to_downscale,
             aggregation=self.downscaling_aggregation,
             method=self.downscaling_method,
             input_dir=self.output_dir,
+        )
+
+    def run_evaluation(self) -> None:
+        """Runs the evaluation process with the current context.
+
+        Returns
+        -------
+        None: the evaluation process is run and results are saved in the output directory.
+
+        """
+        run_evaluation(
+            aoi=self.aoi,
+            evaluation_period=self.evaluation_period,
+            evaluation_product=self.evaluation_product,
         )
 
 
@@ -646,19 +665,17 @@ def define_DownClimContext_from_file(file: str) -> DownClimContext: # pylint: di
         DownClimContext: The context read from the file.
 
     Raises:
-        ValueError: if YAML has no or wrong 'aoi' mandatory value
         FileNotFoundError: if the file does not exist.
     """
+    logger.info("Reading DownClimContext from %s", file)
     # Read YAML file
     try:
         with Path(file).open(encoding="utf-8") as f:
             context = yaml.safe_load(f)
+        logger.info("Context read successfully from %s", file)
     except FileNotFoundError as e:
         msg = f"File {file} does not exist."
+        logger.error(msg)
         raise FileNotFoundError(msg) from e
-
-    if not context.get("aoi"):
-        msg = "Mandatory field 'aoi' is not present in the yaml file."
-        raise ValueError(msg)
 
     return DownClimContext.model_validate(context)

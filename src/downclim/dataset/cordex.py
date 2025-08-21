@@ -7,7 +7,6 @@ from collections.abc import Iterable
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
-from warnings import warn
 
 import geopandas as gpd
 import multiprocess as mp
@@ -17,15 +16,19 @@ import xarray as xr
 from pydantic import BaseModel, Field, field_validator
 
 from ..aoi import get_aoi_informations
+from ..logging_config import get_logger
 from .connectors import connect_to_esgf
 from .utils import (
     Aggregation,
     DataProduct,
     Frequency,
+    check_output_dir,
     get_monthly_climatology,
     prep_dataset,
     split_period,
 )
+
+logger = get_logger(__name__)
 
 simulations_columns = [
         "project",
@@ -151,14 +154,14 @@ class CORDEXContext(BaseModel):
     ) -> list[str]:
         if v is None:
             msg = "No experiment provided, defaulting to ['historical', 'rcp26']"
-            warn(msg, stacklevel=1)
+            logger.warning(msg)
             return ["historical", "rcp26"]
         if isinstance(v, str):
             return [v]
         if not any(exp == "historical" for exp in v):
             msg = """Historical experiment is mandatory to associate with projections.
                 By default we add 'historical' to the list of experiments."""
-            warn(msg, stacklevel=1)
+            logger.warning(msg)
             return [*v, "historical"]
         return list(v)
 
@@ -169,7 +172,7 @@ class CORDEXContext(BaseModel):
     ) -> list[str]:
         if not project:
             msg = "No project provided, defaulting to 'CORDEX'"
-            warn(msg, stacklevel=1)
+            logger.warning(msg)
             return ["CORDEX"]
         if isinstance(project, str):
             return [project]
@@ -182,7 +185,7 @@ class CORDEXContext(BaseModel):
     ) -> list[str]:
         if not product:
             msg = "No product provided, defaulting to 'output'"
-            warn(msg, stacklevel=1)
+            logger.warning(msg)
             return ["output"]
         if isinstance(product, str):
             return [product]
@@ -233,7 +236,7 @@ class CORDEXContext(BaseModel):
 
         if cordex_simulations.empty:
             msg = "No CORDEX simulations found for the given context"
-            warn(msg, stacklevel=1)
+            logger.warning(msg)
         return cordex_simulations
 
 
@@ -336,8 +339,8 @@ def get_download_scripts(
     facets = ", ".join(simulations_columns)
     cordex_scripts = []
     for _, row in simulations.iterrows():
-        print("Getting download script for simulation:")
-        print(row)
+        logger.info("Getting download script for simulation:")
+        logger.info(row)
         context = row.to_dict()
         context["version"]=context["version"][1:]
         context["data_node"]=context.pop("datanode")
@@ -393,7 +396,7 @@ def inspect_cordex(
     ctx = connector.new_context(facets=facets, **context_cleaned)
     if ctx.hit_count == 0:
         msg = "The query has no results"
-        warn(msg, stacklevel=1)
+        logger.warning(msg)
         return pd.DataFrame()
     df_cordex = pd.DataFrame(
         [re.split("[|.]", res.dataset_id, maxsplit=12) for res in ctx.search()]
@@ -522,13 +525,15 @@ def get_cordex(
 
     data_product = DataProduct.CORDEX
 
-    # Create output directory
-    if output_dir is None:
-        output_dir = f"./results/{data_product.product_name}"
-    if tmp_dir is None:
-        tmp_dir = f"./results/tmp/{data_product.product_name}"
-    Path(tmp_dir).mkdir(parents=True, exist_ok=True)
-    Path(output_dir).mkdir(parents=True, exist_ok=True)
+    # Create output and tmp directories
+    output_dir = check_output_dir(output_dir, f"./results/{data_product.product_name}")
+    tmp_dir = check_output_dir(tmp_dir, f"./results/tmp/{data_product.product_name}")
+    # if output_dir is None:
+    #     output_dir = f"./results/{data_product.product_name}"
+    # if tmp_dir is None:
+    #     tmp_dir = f"./results/tmp/{data_product.product_name}"
+    # Path(tmp_dir).mkdir(parents=True, exist_ok=True)
+    # Path(output_dir).mkdir(parents=True, exist_ok=True)
 
     # Get AOIs information
     aois_names, aois_bounds = get_aoi_informations(aoi)
@@ -583,7 +588,7 @@ def get_cordex(
             # check if aoi is in domain
             if not aoi_in_domain[aoi_n][domain]:
                 msg = f"AOI {aoi_n} is not in domain {domain}. Skipping."
-                warn(msg, stacklevel=1)
+                logger.warning(msg)
                 continue
             # Extend the AOI to avoid edge effects
             ds_aoi = ds.sel(
@@ -593,9 +598,9 @@ def get_cordex(
             # write per aoi and period
             for period_year, period_name in zip(periods_years, periods_names, strict=False):
                 tmin, tmax = split_period(period_year)
-                print(f"""Extracting CORDEX data for {period_name}, years {tmin} to {tmax},
-                  for the area of interest \"{aoi_n}\", and simulation
-                  {domain}_{driving_model}_{ensemble}_{rcm_name}_{rcm_version}""")
+                logger.info("""Extracting CORDEX data for %s, years %s to %s,
+                  for the area of interest \"%s\", and simulation %s_%s_%s_%s_%s""",
+                  period_name, tmin, tmax, aoi_n, domain, driving_model, ensemble, rcm_name, rcm_version)
                 if aggregation == Aggregation.MONTHLY_MEAN:
                     ds_clim = get_monthly_climatology(ds_aoi.sel(time=slice(tmin, tmax)))
                 else:
@@ -608,142 +613,3 @@ def get_cordex(
 
     if not keep_tmp_dir:
         shutil.rmtree(tmp_dir)
-
-
-
-############################################################################################################
-# DEPRECATED
-############################################################################################################
-
-
-##def get_cordex_old(
-##    aois: list[gpd.GeoDataFrame],
-##    variables: list[str],
-##    historical_period: tuple[int, int] = (1980, 2005),
-##    evaluation_period: tuple[int, int] = (2006, 2019),
-##    projection_period: tuple[int, int] = (2071, 2100),
-##    # time_frequency: str = "mon",
-##    aggregation: str = "monthly-means",
-##    domain: str = "EUR-11",
-##    institute: str = "IPSL",
-##    model: str = "IPSL-IPSL-CM5A-MR",
-##    rcm: str = "WRF381P",
-##    experiment: str = "rcp45",
-##    ensemble: str = "r1i1p1",
-##    baseline: str = "chelsa2",
-##    downscaling: str = "v1",
-##    esgf_credential: str = "config/credentials_esgf.yml",
-##    nb_threads: int = 1,
-##    output_dir: str = "./results/cordex",
-##    tmp_dir: str = "./results/tmp/cordex",
-##    keep_tmp_directory: bool = False,
-##) -> None:
-##    """
-##    Get CORDEX data for a given region and period.
-##
-##    Parameters
-##    ----------
-##    base_file: list
-##        List of baseline files.
-##    domain: str
-##        Domain of the region.
-##    areas: list
-##        List of areas.
-##    institute: str
-##        Institute.
-##    model: str
-##        Model.
-##    experiment: str
-##        Experiment.
-##    ensemble: str
-##        Ensemble.
-##    baseline: str
-##        Baseline.
-##    rcm: str
-##        RCM.
-##    downscaling: str
-##        Downscaling.
-##    variables: list
-##        List of variables.
-##    time_frequency: str
-##        Time frequency.
-##    esgf_credential: str
-##        ESGF credentials.
-##    threads: int
-##        Number of threads for downloading in parallel. Default is 1 (i.e. no parallel downloading).
-##    periods: list
-##        List of periods.
-##    aggregation: str
-##        Aggregation.
-##    tmp_dir: str
-##        Temporary directory.
-##    """
-##
-##    Path(output_dir).mkdir(parents=True, exist_ok=True)
-##
-##    if not Path.is_dir(tmp_dir):
-##        context = {
-##            "domain": domain,
-##            "gcm": model,
-##            "rcm": rcm,
-##            "time_frequency": "mon",
-##            "experiment": experiment,
-##            "var": variables,
-##        }
-##        # connect
-##        connector = connect_to_esgf(esgf_credential, server=DataProduct.CORDEX.url)
-##        ctx = connector.new_context(facets="*", **context)
-##        all_scripts = [res.file_context().get_download_script() for res in ctx.search()]
-##
-##        Path(tmp_dir).mkdir(parents=True, exist_ok=True)
-##
-##        # download
-##        pool = mp.Pool(nb_threads)
-##        pool.starmap_async(
-##            _get_cordex_wget,
-##            [(script, i, tmp_dir) for i, script in enumerate(all_scripts)],
-##        ).get()
-##        pool.close()
-##    else:
-##        print(
-##            f"Folder '{tmp_dir}' already present, assuming already downloaded data. If this is not the case, "
-##        )
-##
-##    # read & prepare
-##    files = [f"{tmp_dir}/{f}" for f in os.listdir(tmp_dir) if re.match(r".*\.(nc)", f)]
-##    files_hist = [f for f in files if re.search("_historical", f)]
-##    files_rcp = [f for f in files if f not in files_hist]
-##    ds_hist = xr.open_mfdataset(files_hist, parallel=True)
-##    ds_rcp = xr.open_mfdataset(files_rcp, parallel=True)
-##    ds_hist = prep_dataset(ds_hist)
-##    ds_rcp = prep_dataset(ds_rcp)
-##
-##    check_file = "toto.nc"
-##    periods = [historical_period, evaluation_period, projection_period]
-##    # regrid and write per country
-##    for aoi in aois:
-##        base_file = f"{Path(check_file).parent}/{aoi}_base.nc"
-##        base = xr.open_dataset(base_file)
-##        regridder_hist = xe.Regridder(ds_hist, base, "bilinear", ignore_degenerate=True)
-##        ds_hist_r = regridder_hist(ds_hist, keep_attrs=True)
-##        regridder_rcp = xe.Regridder(ds_rcp, base, "bilinear", ignore_degenerate=True)
-##        ds_rcp_r = regridder_rcp(ds_rcp, keep_attrs=True)
-##        for period in periods:
-##            dmin, dmax = split_period(period)
-##            if dmax <= "2005-01-01":
-##                ds_a = (
-##                    ds_hist_r.sel(time=slice(dmin, dmax))
-##                    .groupby("time.month")
-##                    .mean("time")
-##                )
-##            else:
-##                ds_a = (
-##                    ds_rcp_r.sel(time=slice(dmin, dmax))
-##                    .groupby("time.month")
-##                    .mean("time")
-##                )
-##            path = f"{Path(check_file).parent}/{aoi}_CORDEX_{domain}_{institute}_{model}_{experiment}_{ensemble}_{rcm}_{downscaling}_{baseline}_{aggregation}_{period}.nc"
-##            ds_a.to_netcdf(path)
-##
-##    if not keep_tmp_directory:
-##        shutil.rmtree(tmp_dir)

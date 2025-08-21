@@ -10,6 +10,9 @@ import pygadm
 from shapely import MultiPolygon
 from shapely.geometry import box
 
+from .logging_config import get_logger
+
+logger = get_logger(__name__)
 
 def get_aoi_informations(
     aoi: Iterable[gpd.GeoDataFrame],
@@ -27,6 +30,7 @@ def get_aoi_informations(
         - List of names of the areas of interest.
         - List of bounds of the areas of interest (as a tuple).
     """
+    logger.info("Retrieving AOI names and bounds")
     aois_names = [a.NAME_0.to_numpy()[0] for a in aoi]
     aois_bounds = [a.bounds for a in aoi]
     return aois_names, aois_bounds
@@ -108,17 +112,21 @@ def get_aoi(
     geopandas.GeoDataFrame of the aoi
     """
 
+    logger.info("Retrieving AOI from %s", aoi)
     # create output folder
     Path(f"{output_path}").mkdir(parents=True, exist_ok=True)
 
     if isinstance(aoi, str):
+        logger.info("   AOI given as a string: retrieving from GADM for %s", aoi)
         gdf = _get_aoi_gadm(aoi)
         aoi_name = aoi
     elif isinstance(aoi, tuple):
+        logger.info("   AOI given as a tuple: creating geometry for box: %s, named %s", aoi[:-1], aoi[-1])
         if len(aoi) != 5:
             msg = """If aoi is defined as a tuple,
             it must be on the format [xmin, ymin, xmax, ymax, name],
             hence a tuple with 4 float defining the bounds of the aoi and a string defining the name."""
+            logger.error(msg)
             raise ValueError(msg)
 
         gdf = gpd.GeoDataFrame(
@@ -126,6 +134,7 @@ def get_aoi(
         )
         aoi_name = aoi[-1]
     elif isinstance(aoi, gpd.GeoDataFrame):
+        logger.info("   AOI given as a GeoDataFrame: using existing geometry")
         gdf = aoi
         try:
             aoi_name = gdf.NAME_0.to_numpy()[0]
@@ -137,6 +146,11 @@ def get_aoi(
     else:
         msg = "aoi must be a string, a tuple of 4 floats + 1 string or a geopandas.geodataframe"
         raise ValueError(msg)
+
+    # Define a crs if not already defined
+    if gdf.crs is None:
+        logger.info("   AOI CRS not defined: setting to EPSG:4326 / WGS84")
+        gdf = gdf.set_crs("EPSG:4326")  # WGS84
 
     if save_points_file:
         points = sample_aoi(gdf, log10_eval_pts)

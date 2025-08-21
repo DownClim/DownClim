@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import logging
-import warnings
 from collections.abc import Iterable
 from functools import lru_cache
 from pathlib import Path
@@ -15,17 +13,19 @@ import xesmf as xe
 from pydantic import BaseModel, Field, field_validator
 
 from ..aoi import get_aoi_informations
+from ..logging_config import get_logger
 from .connectors import connect_to_gcfs
 from .utils import (
     Aggregation,
     DataProduct,
     Frequency,
+    check_output_dir,
     get_monthly_climatology,
     prep_dataset,
     split_period,
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class CMIP6Context(BaseModel):
@@ -128,7 +128,7 @@ class CMIP6Context(BaseModel):
         if not any(exp == "historical" for exp in v):
             msg = """Historical experiment is mandatory to associate with projections.
                 By default we add 'historical' to the list of experiments."""
-            warnings.warn(msg, stacklevel=2)
+            logger.warning(msg, stacklevel=2)
             return [*v, "historical"]
         return list(v)
 
@@ -166,7 +166,7 @@ class CMIP6Context(BaseModel):
         )
         if cmip6_simulations.empty:
             msg = "No CMIP6 simulations found for the given context."
-            warnings.warn(msg, stacklevel=1)
+            logger.warning(msg)
             return cmip6_simulations
         return cmip6_simulations.reset_index().drop("index", axis=1)
 
@@ -353,9 +353,7 @@ def get_cmip6(
         chunks = {"time": 100, "lat": 400, "lon": 400}
 
     # Create output directory
-    if output_dir is None:
-        output_dir = f"./results/{data_product.product_name}"
-    Path(output_dir).mkdir(parents=True, exist_ok=True)
+    output_dir = check_output_dir(output_dir, f"./results/{data_product.product_name}")
 
     # Get AOIs information
     aois_names, aois_bounds = get_aoi_informations(aoi)

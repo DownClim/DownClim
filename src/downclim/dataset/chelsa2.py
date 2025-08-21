@@ -2,12 +2,10 @@ from __future__ import annotations
 
 import datetime
 import shutil
-import warnings
 from dataclasses import asdict
 from pathlib import Path
 from urllib.error import URLError
 from urllib.request import urlopen
-from warnings import warn
 
 import geopandas as gpd
 import multiprocess as mp
@@ -16,17 +14,21 @@ import rioxarray as rio
 import xarray as xr
 
 from ..aoi import get_aoi_informations
+from ..logging_config import get_logger
 from .utils import (
     Aggregation,
     DataProduct,
     Frequency,
     VariableAttributes,
+    check_output_dir,
     climatology_filename,
-    get_grid,
     get_monthly_climatology,
     prep_dataset,
+    save_grid_file,
     split_period,
 )
+
+logger = get_logger(__name__)
 
 
 def _get_chelsa2_one_file(
@@ -98,19 +100,18 @@ def _get_chelsa2_year_var(
         Path(f"{tmp_directory}/{DataProduct.CHELSA.product_name}_{aoi_n}_{variable}_{year}.nc").is_file()
         for aoi_n in aoi_name
     ):
-        print(f"""CHELSA data for year '{year}' and variable '{variable}' already downloaded. Not downloading,
+        logger.warning("""CHELSA data for year '%s' and variable '%s' already downloaded. Not downloading,
               but the behaviour of the function is not affected.
               If this is not the desired behavior, please remove the file(s) from the temporary folder
-              {tmp_directory} and rerun the function.""")
+              %s and rerun the function.""", year, variable, tmp_directory)
         paths = {
             aoi_n: f"{tmp_directory}/{DataProduct.CHELSA.product_name}_{aoi_n}_{variable}_{year}.nc"
             for aoi_n in aoi_name
         }
 
     else:
-        print(
-            f'Getting year "{year}" for variables "{variable}" and areas of interest : "{aoi_name}"'
-        )
+        logger.info(
+            'Getting year "%s" for variables "%s" and areas of interest : "%s"', year, variable, aoi_name)
         chelsa_datas = [
             _get_chelsa2_one_file(aoi_name, aoi_bound, variable, month, year, time_freq)
             for month in range(1, 13)
@@ -119,17 +120,18 @@ def _get_chelsa2_year_var(
         paths = {}
 
         for aoi_n in aoi_name:
-            print(f"Concatenating data for area of interest : {aoi_n}")
+            logger.info("Concatenating data for area of interest : %s", aoi_n)
             ds_chelsa = xr.concat([chelsa_data[aoi_n] for chelsa_data in chelsa_datas], dim='time')
             for chelsa_data in chelsa_datas:
                 del chelsa_data[aoi_n]
             ds_chelsa = ds_chelsa[["time", "x", "y", variable]]
             ds_chelsa = prep_dataset(ds_chelsa, DataProduct.CHELSA)
+            ds_chelsa = ds_chelsa.rio.set_spatial_dims(x_dim="lon", y_dim="lat")
 
             ds_chelsa[variable].attrs = asdict(VariableAttributes[variable])
             output_file = f"{tmp_directory}/{DataProduct.CHELSA.product_name}_{aoi_n}_{variable}_{year}.nc"
             paths[aoi_n] = output_file
-            print(f"saving file {output_file}")
+            logger.info("Saving file %s", output_file)
             ds_chelsa.chunk(chunks).to_netcdf(output_file) if chunks else ds_chelsa.to_netcdf(output_file)
             del ds_chelsa
     return paths
@@ -187,15 +189,13 @@ def get_chelsa2(
     No output from the function. New file with dataset is stored in the output_dir.
     """
 
+    logger.info("Downloading CHELSA data...")
+
     data_product = DataProduct.CHELSA
 
-    # Create directories
-    if output_dir is None:
-        output_dir = f"./results/{data_product.product_name}"
-    if tmp_dir is None:
-        tmp_dir = f"./results/tmp/{data_product.product_name}"
-    Path(tmp_dir).mkdir(parents=True, exist_ok=True)
-    Path(output_dir).mkdir(parents=True, exist_ok=True)
+    # Create output and tmp directories
+    output_dir = check_output_dir(output_dir, f"./results/{data_product.product_name}")
+    tmp_dir = check_output_dir(tmp_dir, f"./results/tmp/{data_product.product_name}")
 
     # Get AOIs information
     aoi_name, aoi_bound = get_aoi_informations(aoi)
@@ -205,15 +205,14 @@ def get_chelsa2(
 
     # Specific case for CHELSA "pr" data
     if "pr" in variable and any(year in [2013, 2016] for year in years):
-        warnings.warn(
+        logger.warning(
             "CHELSA data for years 2013 and 2016 is not available for precipitation (file is corrupted). \
-                      We will not use these years for computing climatology.",
-            stacklevel=1,
+                      We will not use these years for computing climatology."
         )
         years.remove(2013)  # issue with the tif
         years.remove(2016)  # issue with the tif
 
-    print("Downloading CHELSA data...")
+    logger.info("Downloading CHELSA data...")
 
     # We first need to check if the files exist before downloading and processing data
     # We update the list of AOIs to only include those that need to be processed
@@ -225,7 +224,7 @@ def get_chelsa2(
             No action is done for {aoi_n}.
             Please make sure this is the expected behaviour.
             Continue..."""
-            warn(msg, stacklevel=1)
+            logger.warning(msg)
             aoi_name.remove(aoi_n)
 
     # Actual data retrieval with update aois if needed
@@ -248,11 +247,11 @@ def get_chelsa2(
         }
         del paths
 
-        print("Merging files by aoi...")
+        logger.info("Merging files by aoi...")
         # Merge files to get one file per aoi for the period
         for aoi_n in aoi_name:
             output_filename = climatology_filename(output_dir, aoi_n, data_product, aggregation, period)
-            print("Merging files for area " + aoi_n + "...")
+            logger.info("Merging files for area %s...", aoi_n)
             ds_aoi_period: xr.Dataset = xr.open_mfdataset(
                 paths2[aoi_n], decode_coords="all", parallel=True
             )
@@ -264,12 +263,11 @@ def get_chelsa2(
             else:
                 msg = "Currently only monthly-means aggregation available!"
                 raise ValueError(msg)
+            ds_aoi_period_clim = ds_aoi_period_clim.\
+                rename({data_product.lon_lat_names['lon']:'lon', data_product.lon_lat_names['lat']:'lat'})
             ds_aoi_period_clim.to_netcdf(output_filename)
 
-            if not Path(f"{output_dir}/{data_product.product_name}_{aoi_n}_grid.nc").is_file():
-                print(f"Saving {data_product.product_name} grid for {aoi_n}...")
-                grid = get_grid(ds_aoi_period_clim, data_product)
-                grid.to_netcdf(f"{output_dir}/{data_product.product_name}_{aoi_n}_grid.nc")
+            save_grid_file(output_dir, data_product, aoi_n, ds_aoi_period_clim)
 
     if not keep_tmp_dir:
         shutil.rmtree(tmp_dir)
