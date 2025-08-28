@@ -32,7 +32,7 @@ def _check_populate_simulations(
     """Check and populate simulations for a specific AOI, data product and period.
 
     Args:
-        simulations (list[str] | None): List of simulations to downscale.
+        simulations (list[str] | None): List of simulations to evaluate.
         aoi_n (str): AOI name.
         input_dir (str): Input directory where the simulation files are located.
         dataproduct (DataProduct): Data product.
@@ -47,7 +47,7 @@ def _check_populate_simulations(
             str(p) \
             for p in Path(f"{input_dir}/{dataproduct.product_name}").glob(f"{aoi_n}_{dataproduct.product_name}*{period[0]}*{period[1]}*{evaluation_grid}.nc") \
             ]
-        logger.warning("%s simulations to downscale not provided. Using all files found in %s/%s.", dataproduct.product_name.upper(), input_dir, dataproduct.product_name)
+        logger.warning("%s simulations to evaluate not provided. Using all files found in %s/%s.", dataproduct.product_name.upper(), input_dir, dataproduct.product_name)
     else:
         simulations_ok = [
             p for p in simulations
@@ -56,7 +56,7 @@ def _check_populate_simulations(
                 p.endswith(f"{period[0]}*{period[1]}*{evaluation_grid}.nc")
             ]
     if simulations_ok == []:
-        logger.warning("No %s simulations to downscale found.", dataproduct.product_name.upper())
+        logger.warning("No %s simulations to evaluate found.", dataproduct.product_name.upper())
         logger.warning("Files that are evaluated must have the format %s.", f"{input_dir}/{dataproduct.product_name}/{aoi_n}_{dataproduct.product_name}*{period[0]}*{period[1]}*{evaluation_grid}.nc")
     return simulations_ok
 

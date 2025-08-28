@@ -263,8 +263,8 @@ def get_chelsa2(
             else:
                 msg = "Currently only monthly-means aggregation available!"
                 raise ValueError(msg)
-            ds_aoi_period_clim = ds_aoi_period_clim.\
-                rename({data_product.lon_lat_names['lon']:'lon', data_product.lon_lat_names['lat']:'lat'})
+            # ds_aoi_period_clim = ds_aoi_period_clim.\
+            #     rename({data_product.lon_lat_names['lon']:'lon', data_product.lon_lat_names['lat']:'lat'})
             ds_aoi_period_clim.to_netcdf(output_filename)
 
             save_grid_file(output_dir, data_product, aoi_n, ds_aoi_period_clim)
