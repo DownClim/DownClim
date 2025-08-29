@@ -69,6 +69,7 @@ docs = [
   "furo>=2023.08.17",
   "sphinx-sitemap",
   "nbsphinx",
+  "myst-nb",
   "sphinx-design",
   "sphinx-favicon",
   "linkify-it-py"

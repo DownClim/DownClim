@@ -2,36 +2,36 @@
 ## All fields except aoi have default values. If the field is not specified, the default value is used.
 ####################################################
 # aoi
-aoi: "Vanuatu" # e.g. "Vanuatu"
+aoi: # e.g. "Vanuatu"
 
 # variables
-variable: ["tas", "pr"] #e.g. ["tas", "tasmin", "tasmax", "pr"]
-time_frequency: "mon" #e.g. "mon"
+variable:  #e.g. ["tas", "tasmin", "tasmax", "pr"]
+time_frequency:   #e.g. "mon"
 
 # downscaling
-downscaling_aggregation: "monthly-mean" #e.g. "monthly-mean"
-downscaling_method: "bias_correction" #e.g. "bias_correction"
+downscaling_aggregation: #e.g. "monthly-mean"
+downscaling_method: #e.g. "bias_correction"
 
 # data and simulations
-baseline_product: "chelsa2" #e.g. "chelsa2"
-use_cordex: false #e.g. true
-use_cmip6: true #e.g. true
-cordex_context: {} #e.g. {}
-cmip6_context: { source: ["IPSL-CM6A-LR", "CMCC-CM2-HR4"] } #e.g. {}
-historical_period: [1980, 1981] #e.g. (1980, 2005)
-evaluation_period: [2017, 2018] #e.g. (2006, 2019)
-projection_period: [2099, 2100] #e.g. (2071, 2100)
-evaluation_product: ["chirps", "chelsa2"] #e.g. ["chirps", "chelsa2"]
+baseline_product: #e.g. "chelsa2"
+use_cordex: #e.g. true
+use_cmip6: #e.g. true
+cordex_context: #e.g. {}
+cmip6_context: #e.g. {}
+historical_period: #e.g. [1980, 2005]
+evaluation_period: #e.g. [2006, 2018]
+projection_period: #e.g. [2071, 2100]
+evaluation_product: #e.g. ["chirps", "chelsa2"]
 
 # internal computation
-nb_threads: 4 #e.g. 4
-memory_mb: 4096 #e.g. 4096
-chunks: { "time": 1, "lat": 1000, "lon": 1000 } #e.g. {"time": 1, "lat": 1000, "lon": 1000}
+nb_threads: #e.g. 4
+memory_mb: #e.g. 4096
+chunks: #e.g. {"time": 1, "lat": 1000, "lon": 1000}
 
 # directories
-output_dir: "results" #e.g. "results"
-tmp_dir: "tmp" #e.g. "tmp"
-keep_tmp_dir: true #e.g. "False"
+output_dir: #e.g. "results"
+tmp_dir: #e.g. "tmp"
+keep_tmp_dir: #e.g. "False"
 
 # data access
-esgf_credential: "config/esgf_credential.yaml" #e.g. "config/esgf_credential.yaml"
+esgf_credential: #e.g. "config/esgf_credential.yaml"

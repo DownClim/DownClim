@@ -10,6 +10,7 @@ from pyesgf.logon import LogonManager
 from pyesgf.search import SearchConnection
 
 from ..logging_config import get_logger
+from .utils import DataProduct
 
 logger = get_logger(__name__)
 
@@ -70,7 +71,7 @@ def connect_to_gcfs(token: str = "anon") -> gcsfs.GCSFileSystem:
     return gcsfs.GCSFileSystem(token=token)
 
 
-def connect_to_esgf(esgf_credential: str, server: str) -> pyesgf.SearchConnection:
+def connect_to_esgf(esgf_credential: str, server: str = DataProduct.CORDEX.url) -> pyesgf.SearchConnection:
     """
     Connector to ESGF server.
 

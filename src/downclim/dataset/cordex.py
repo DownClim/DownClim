@@ -202,6 +202,60 @@ class CORDEXContext(BaseModel):
             raise ValueError(msg)
         return frequency
 
+    def inspect_cordex(
+        self,
+        esgf_credential: str | None = None,
+        cordex_server_url: str | None = DataProduct.CORDEX.url
+    ) -> pd.DataFrame:
+        """
+        Inspects ESGF server to get information about the available datasets provided the context.
+
+        Parameters
+        ----------
+        esgf_credential: str | None = None
+            Path to the ESGF credentials file, if needs to reconnect.
+            Defaults to None, in which case the function will fail.
+        cordex_server_url: str | None = DataProduct.CORDEX.url
+            URL to the CORDEX server.
+
+        Returns
+        -------
+        pd.DataFrame: DataFrame containing information about the available datasets matching the query
+        """
+
+        # connect
+        if esgf_credential is None:
+            msg = "No esgf_credential provided, please provide one to get the download scripts."
+            raise KeyError(msg)
+        connector = connect_to_esgf(esgf_credential, server=DataProduct.CORDEX.url)
+
+        # name mapping between context / CORDEX dataset
+        cordex_name_mapping = {
+            "frequency_output": "time_frequency",
+        }
+
+        if self.frequency == Frequency.MONTHLY:
+            self.frequency_output = "mon"
+        context_cleaned = {k: v for k, v in dict(self).items() if v}
+        for k in cordex_name_mapping:
+            context_cleaned[cordex_name_mapping[k]] = context_cleaned.pop(k, None)
+        facets_list = [*context_cleaned.keys()]
+        facets = ", ".join(facets_list)
+        ctx = connector.new_context(facets=facets, **context_cleaned)
+        if ctx.hit_count == 0:
+            msg = "The query has no results"
+            logger.warning(msg)
+            return pd.DataFrame()
+        df_cordex = pd.DataFrame(
+            [re.split("[|.]", res.dataset_id, maxsplit=12) for res in ctx.search()]
+        ).drop_duplicates()
+        df_cordex.columns = simulations_columns
+        df_cordex.project = df_cordex.project.str.upper()
+        #cordex_scripts = [res.file_context().get_download_script() for res in ctx.search(ignore_facet_check=True)]
+        #df_cordex["download_script"]=cordex_scripts
+        return df_cordex
+
+
     def list_available_simulations(
         self,
         esgf_credential: str = "config/esgf_credential.yaml",
@@ -349,63 +403,6 @@ def get_download_scripts(
     return simulations.assign(download_script=cordex_scripts)
 
 
-def inspect_cordex(
-    context: dict[str, str | Iterable[str]],
-    esgf_credential: str | None = None,
-) -> pd.DataFrame:
-    """
-    Inspects ESGF server to get information about the available datasets provided the context.
-
-    Parameters
-    ----------
-    context: dict
-        Dictionary containing information about the query on the ESGF server. It must contain the following keys:
-            - domain: str
-            - gcm: str
-            - rcm: str
-            - time_frequency: str
-            - experiment: str
-            - variable: str
-    esgf_credential: str | None = None
-        Path to the ESGF credentials file, if needs to reconnect.
-        Defaults to None, in which case the function will fail.
-
-    Returns
-    -------
-    pd.DataFrame: DataFrame containing information about the available datasets matching the query
-    """
-
-    # connect
-    if esgf_credential is None:
-        msg = "No esgf_credential provided, please provide one to get the download scripts."
-        raise KeyError(msg)
-    connector = connect_to_esgf(esgf_credential, server=DataProduct.CORDEX.url)
-
-    # name mapping between context / CORDEX dataset
-    cordex_name_mapping = {
-        "frequency": "time_frequency",
-    }
-
-    if context["frequency"] == Frequency.MONTHLY:
-        context["frequency"] = "mon"
-    context_cleaned = {k: v for k, v in context.items() if v}
-    for k in cordex_name_mapping:
-        context_cleaned[cordex_name_mapping[k]] = context_cleaned.pop(k, None)
-    facets_list = [*context_cleaned.keys()]
-    facets = ", ".join(facets_list)
-    ctx = connector.new_context(facets=facets, **context_cleaned)
-    if ctx.hit_count == 0:
-        msg = "The query has no results"
-        logger.warning(msg)
-        return pd.DataFrame()
-    df_cordex = pd.DataFrame(
-        [re.split("[|.]", res.dataset_id, maxsplit=12) for res in ctx.search()]
-    ).drop_duplicates()
-    df_cordex.columns = simulations_columns
-    df_cordex.project = df_cordex.project.str.upper()
-    #cordex_scripts = [res.file_context().get_download_script() for res in ctx.search(ignore_facet_check=True)]
-    #df_cordex["download_script"]=cordex_scripts
-    return df_cordex
 
 def get_context_from_filename(filename: str) -> dict[str, str]:
     """
@@ -492,7 +489,7 @@ def get_cordex(
     aoi: list[gpd.GeoDataFrame]
         List of areas of interest (AOI) to download data for. Typically the output of :func:`~downclim.aoi.get_aoi` function.
     cordex_simulations: pd.DataFrame
-        DataFrame containing the list of CORDEX simulations to download. It can be obtained using the : func:`~downclim.dataset.cordex.inspect_cordex` function.list_available_simulations` method.
+        DataFrame containing the list of CORDEX simulations to download. It can be obtained using the : func:`~downclim.dataset.CordexContext.list_available_simulations` method.
     historical_period: tuple[int, int], optional
         Baseline period for the data, as a tuple of (start year, end year). Defaults to (1980, 2005).
     evaluation_period: tuple[int, int], optional

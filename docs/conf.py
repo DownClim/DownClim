@@ -24,12 +24,14 @@ extensions = [
     "sphinx_favicon",      # support for favicon
     "sphinx_copybutton",      # support for copybutton in code blocks
     "nbsphinx",     # for integrating jupyter notebooks
-    "myst_parser"   # for parsing .md files
+    #"myst_parser",   # for parsing .md files
+    "myst_nb"       # myst with .md and notebooks (used for hiding cells)
     ]
 
 source_suffix = {
     '.rst': 'restructuredtext',
-    '.md': 'markdown',
+    '.ipynb': 'myst-nb',
+    '.md': 'myst-nb',
 }
 
 exclude_patterns = [

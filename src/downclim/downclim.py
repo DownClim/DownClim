@@ -441,32 +441,32 @@ class DownClimContext(BaseModel):
         logger.info("Downloading baseline product...")
         if self.baseline_product is DataProduct.CHELSA:
             get_chelsa2(
-                aoi=self.aoi,
-                variable=self.variable,
-                period=self.historical_period,
-                frequency=self.time_frequency,
-                aggregation=self.downscaling_aggregation,
-                nb_threads=self.nb_threads,
-                output_dir=f"{self.output_dir}/{self.baseline_product.product_name}",
-                tmp_dir=f"{self.tmp_dir}/{self.baseline_product.product_name}",
-                keep_tmp_dir=self.keep_tmp_dir,
+                aoi = self.aoi,
+                variable = self.variable,
+                period = self.historical_period,
+                frequency = self.time_frequency,
+                aggregation = self.downscaling_aggregation,
+                nb_threads = self.nb_threads,
+                output_dir = f"{self.output_dir}/{self.baseline_product.product_name}",
+                tmp_dir = f"{self.tmp_dir}/{self.baseline_product.product_name}",
+                keep_tmp_dir = self.keep_tmp_dir,
             )
         elif self.baseline_product is DataProduct.CHIRPS:
             get_chirps(
-                aoi=self.aoi,
-                period=self.historical_period,
-                time_frequency=self.time_frequency,
-                aggregation=self.downscaling_aggregation,
-                output_dir=f"{self.output_dir}/{self.baseline_product.product_name}",
+                aoi = self.aoi,
+                period = self.historical_period,
+                time_frequency = self.time_frequency,
+                aggregation = self.downscaling_aggregation,
+                output_dir = f"{self.output_dir}/{self.baseline_product.product_name}",
             )
         elif self.baseline_product is DataProduct.GSHTD:
             get_gshtd(
-                aoi=self.aoi,
-                variable=self.variable,
-                period=self.historical_period,
-                time_frequency=self.time_frequency,
-                aggregation=self.downscaling_aggregation,
-                output_dir=f"{self.output_dir}/{self.baseline_product.product_name}",
+                aoi = self.aoi,
+                variable = self.variable,
+                period = self.historical_period,
+                time_frequency = self.time_frequency,
+                aggregation = self.downscaling_aggregation,
+                output_dir = f"{self.output_dir}/{self.baseline_product.product_name}",
                 )
         else:
             msg = f"Unknown or not implemented data product '{self.baseline_product.product_name}'."
@@ -484,34 +484,34 @@ class DownClimContext(BaseModel):
         for product in self.evaluation_product:
             if product is DataProduct.CHELSA:
                 get_chelsa2(
-                    aoi=self.aoi,
-                    variable=self.variable,
-                    period=self.evaluation_period,
-                    frequency=self.time_frequency,
-                    aggregation=self.downscaling_aggregation,
-                    nb_threads=self.nb_threads,
-                    output_dir=f"{self.output_dir}/{product.product_name}",
-                    tmp_dir=f"{self.tmp_dir}/{product.product_name}",
-                    keep_tmp_dir=self.keep_tmp_dir,
+                    aoi = self.aoi,
+                    variable = self.variable,
+                    period = self.evaluation_period,
+                    frequency = self.time_frequency,
+                    aggregation = self.downscaling_aggregation,
+                    nb_threads = self.nb_threads,
+                    output_dir = f"{self.output_dir}/{product.product_name}",
+                    tmp_dir = f"{self.tmp_dir}/{product.product_name}",
+                    keep_tmp_dir = self.keep_tmp_dir,
                 )
             elif product is DataProduct.CHIRPS:
                 get_chirps(
-                    aoi=self.aoi,
-                    period=self.evaluation_period,
-                    time_frequency=self.time_frequency,
-                    aggregation=self.downscaling_aggregation,
-                    output_dir=f"{self.output_dir}/{product.product_name}",
-                    ee_project=self.ee_project
+                    aoi = self.aoi,
+                    period = self.evaluation_period,
+                    time_frequency = self.time_frequency,
+                    aggregation = self.downscaling_aggregation,
+                    output_dir = f"{self.output_dir}/{product.product_name}",
+                    ee_project = self.ee_project
                 )
             elif product is DataProduct.GSHTD:
                 get_gshtd(
-                    aoi=self.aoi,
-                    variable=self.variable,
-                    period=self.evaluation_period,
-                    time_frequency=self.time_frequency,
-                    aggregation=self.downscaling_aggregation,
-                    output_dir=f"{self.output_dir}/{product.product_name}",
-                    ee_project=self.ee_project
+                    aoi = self.aoi,
+                    variable = self.variable,
+                    period = self.evaluation_period,
+                    time_frequency = self.time_frequency,
+                    aggregation = self.downscaling_aggregation,
+                    output_dir = f"{self.output_dir}/{product.product_name}",
+                    ee_project = self.ee_project
                 )
             else:
                 msg = f"Unknown or not implemented data product '{product.product_name}'."
@@ -537,33 +537,33 @@ class DownClimContext(BaseModel):
             logger.info("     Downloading CMIP6 simulations...")
             cmip6_simulations = self.cmip6_context.list_available_simulations()
             get_cmip6(
-                aoi=self.aoi,
+                aoi = self.aoi,
                 cmip6_simulations=cmip6_simulations,
-                historical_period=self.historical_period,
-                evaluation_period=self.evaluation_period,
-                projection_period=self.projection_period,
-                aggregation=self.downscaling_aggregation,
-                output_dir=f"{self.output_dir}/cmip6",
-                chunks=self.chunks,
+                historical_period = self.historical_period,
+                evaluation_period = self.evaluation_period,
+                projection_period = self.projection_period,
+                aggregation = self.downscaling_aggregation,
+                output_dir = f"{self.output_dir}/cmip6",
+                chunks = self.chunks,
             )
         if self.use_cordex:
             logger.info("     Downloading CORDEX simulations...")
             cordex_simulations = inspect_cordex(
-                context=self.cordex_context,
-                esgf_credential=self.esgf_credentials
+                context = self.cordex_context,
+                esgf_credential = self.esgf_credentials
             )
             get_cordex(
-                aoi=self.aoi,
+                aoi = self.aoi,
                 cordex_simulations=cordex_simulations,
-                historical_period=self.historical_period,
-                evaluation_period=self.evaluation_period,
-                projection_period=self.projection_period,
-                aggregation=self.downscaling_aggregation,
-                output_dir=f"{self.output_dir}/cordex",
-                tmp_dir=self.tmp_dir,
-                nb_threads=self.nb_threads,
-                keep_tmp_dir=self.keep_tmp_dir,
-                esgf_credentials=self.esgf_credentials,
+                historical_period = self.historical_period,
+                evaluation_period = self.evaluation_period,
+                projection_period = self.projection_period,
+                aggregation = self.downscaling_aggregation,
+                output_dir = f"{self.output_dir}/cordex",
+                tmp_dir = self.tmp_dir,
+                nb_threads = self.nb_threads,
+                keep_tmp_dir = self.keep_tmp_dir,
+                esgf_credentials = self.esgf_credentials,
             )
 
     def download_data(self) -> None:
@@ -614,21 +614,21 @@ class DownClimContext(BaseModel):
 
         """
         run_downscaling(
-            aoi=self.aoi,
-            historical_period=self.historical_period,
-            evaluation_period=self.evaluation_period,
-            projection_period=self.projection_period,
-            baseline_product=self.baseline_product,
-            cmip6_simulations_to_downscale=cmip6_simulations_to_downscale,
-            cordex_simulations_to_downscale=cordex_simulations_to_downscale,
-            downscaling_grid_file=downscaling_grid_file,
-            periods_to_downscale=periods_to_downscale,
-            aggregation=self.downscaling_aggregation,
-            method=self.downscaling_method,
-            input_dir=self.output_dir,
+            aoi = self.aoi,
+            historical_period = self.historical_period,
+            evaluation_period = self.evaluation_period,
+            projection_period = self.projection_period,
+            baseline_product = self.baseline_product,
+            cmip6_simulations_to_downscale = cmip6_simulations_to_downscale,
+            cordex_simulations_to_downscale = cordex_simulations_to_downscale,
+            downscaling_grid_file = downscaling_grid_file,
+            periods_to_downscale = periods_to_downscale,
+            aggregation = self.downscaling_aggregation,
+            method = self.downscaling_method,
+            input_dir = self.output_dir,
         )
 
-    def run_evaluation(self) -> None:
+    def run_evaluation(self, evaluation_grid_file: list[str] | None = None) -> None:
         """Runs the evaluation process with the current context.
 
         Returns
@@ -637,9 +637,10 @@ class DownClimContext(BaseModel):
 
         """
         run_evaluation(
-            aoi=self.aoi,
-            evaluation_period=self.evaluation_period,
-            evaluation_product=self.evaluation_product,
+            aoi = self.aoi,
+            evaluation_period = self.evaluation_period,
+            evaluation_product = self.evaluation_product,
+            evaluation_grid_file = evaluation_grid_file
         )
 
 

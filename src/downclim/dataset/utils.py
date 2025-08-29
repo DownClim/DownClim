@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-import pandas as pd
 import xarray as xr
 import xesmf as xe
 from aenum import MultiValueEnum
@@ -304,28 +303,6 @@ def get_regridder(
         regridder = xe.Regridder(ds_source, ds_target, method)
         regridder.to_netcdf(regridder_filename)
     return regridder
-
-def save_simulations_list(
-    cordex_simulations: pd.DataFrame | None = None,
-    cmip6_simulations: pd.DataFrame | None = None,
-    output_file: str = "resources/projections_all.csv",
-) -> None:
-    """
-    Save the lists of available CORDEX and CMIP6 simulations to a CSV file.
-
-    Parameters
-    ----------
-    cordex_simulations: pd.DataFrame
-        DataFrame containing information about the available CORDEX simulations.
-    cmip6_simulations: pd.DataFrame
-        DataFrame containing information about the available CMIP6 simulations.
-    output_file: str (default: "resources/projections_all.csv")
-        Path to the output file.
-    """
-
-    pd.concat([cordex_simulations, cmip6_simulations]).to_csv(
-        output_file, sep=",", index=False
-    )
 
 def check_input_dir(input_dir: str | None, default_dir: str) -> str:
     """

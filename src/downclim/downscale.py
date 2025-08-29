@@ -185,7 +185,7 @@ def run_downscaling(
     baseline_product: DataProduct,
     cmip6_simulations_to_downscale: list[str] | None = None,
     cordex_simulations_to_downscale: list[str] | None = None,
-    downscaling_grid_file: str | None = None,
+    downscaling_grid_file: list[str] | None = None,
     periods_to_downscale: Iterable[str] | None = None,
     aggregation: Aggregation = Aggregation.MONTHLY_MEAN, # type: ignore[assignment]
     method: DownscaleMethod = DownscaleMethod.BIAS_CORRECTION,
@@ -205,8 +205,8 @@ def run_downscaling(
         which means all available CMIP6 simulations in "<input_dir>".
         cordex_simulations_to_downscale (list[str] | None): List of CORDEX simulations to downscale. Defaults to None,
         which means all available CORDEX simulations in "<input_dir>".
-        downscaling_grid_file (str | None, optional): Path to the grid file on which to downscale. Defaults to None, meaning
-        the grid will be extracted from the baseline product.
+        downscaling_grid_file (list[str] | None): Path to the grid file on which to downscale. One for each aoi. Defaults to None, meaning
+        the grid will be extracted from the baseline product for each aoi.
         periods_to_downscale (list[str] | None): List of periods to downscale. Can be any combination of ['evaluation', 'projection']. Defaults to None, meaning all periods will be downscaled.
         aggregation (Aggregation, optional): Aggregation method to use. Defaults to Aggregation.MONTHLY_MEAN.
         method (DownscaleMethod, optional): Downscaling method to use. Defaults to DownscaleMethod.BIAS_CORRECTION.
@@ -238,7 +238,7 @@ def run_downscaling(
         msg = f"Invalid periods found in {periods_to_downscale}. Please provide valid periods : ['evaluation', 'projection']."
         raise ValueError(msg)
 
-    for aoi_n in aoi_name:
+    for i, aoi_n in enumerate(aoi_name):
         # Check and populate simulations to downscale
         logger.info("   Checking simulations to downscale for AOI: %s", aoi_n)
         if not cmip6_simulations_to_downscale:
@@ -249,14 +249,16 @@ def run_downscaling(
         # Get the downscaling grid
         logger.info("       Checking downscaling grid file...")
         if downscaling_grid_file is None:
-            downscaling_grid_file = f"{input_dir}/{baseline_product.product_name}/{baseline_product.product_name}_{aoi_n}_grid.nc"
-            msg = f"Downscaling grid file not provided. Using default grid file {downscaling_grid_file} which is extracted from {baseline_product.product_name}"
+            downscaling_grid_file_aoi = f"{input_dir}/{baseline_product.product_name}/{baseline_product.product_name}_{aoi_n}_grid.nc"
+            msg = f"Downscaling grid file not provided. Using default grid file {downscaling_grid_file_aoi} which is extracted from {baseline_product.product_name}"
             logger.warning(msg)
-        if not Path(downscaling_grid_file).is_file():
-            msg = f"Downscaling grid file {downscaling_grid_file} not found. Please provide a valid downscaling grid file."
+        else:
+            downscaling_grid_file_aoi = downscaling_grid_file[i]
+        if not Path(downscaling_grid_file_aoi).is_file():
+            msg = f"Downscaling grid file {downscaling_grid_file_aoi} not found. Please provide a valid downscaling grid file."
             logger.error(msg)
             raise FileNotFoundError(msg)
-        downscaling_grid = xr.open_dataset(downscaling_grid_file)
+        downscaling_grid = xr.open_dataset(downscaling_grid_file_aoi)
 
         # Get baseline historical data and interpolate on downscaling grid (if needed)
         logger.info("       Checking baseline historical data...")
@@ -277,7 +279,7 @@ def run_downscaling(
                 ds_baseline,
                 downscaling_grid,
                 baseline_grid_file,
-                downscaling_grid_file,
+                downscaling_grid_file_aoi,
                 f"{output_dir}/..")
             ds_baseline_downscaling_grid = regridder(ds_baseline, keep_attrs=True)
 
@@ -296,7 +298,7 @@ def run_downscaling(
             logger.info("       Regridding historical data %s, period %s, for AOI: %s.", k, historical_period, aoi_n)
             ds_historical = xr.open_dataset(k)
             regridder = xe.Regridder(ds_historical, downscaling_grid, "bilinear")
-            historical_regridded_file = f"{output_dir}/{v['data_product']}/{Path(k).stem}-{Path(downscaling_grid_file).stem}.nc"
+            historical_regridded_file = f"{output_dir}/{v['data_product']}/{Path(k).stem}-{Path(downscaling_grid_file_aoi).stem}.nc"
             if Path(historical_regridded_file).is_file():
                 logger.warning("        Regridded historical dataset for %s already exists: %s. No action taken.", k, historical_regridded_file)
                 ds_historical_regridded = xr.open_dataset(historical_regridded_file)
@@ -320,6 +322,6 @@ def run_downscaling(
                     raise ValueError(msg)
 
                 # Save downscaled dataset
-                downscaled_file = f"{output_dir}/{v['data_product']}/{Path(file_to_downscale).stem}-downscaled-{baseline_product.product_name}_baseline-{Path(downscaling_grid_file).stem}.nc"
+                downscaled_file = f"{output_dir}/{v['data_product']}/{Path(file_to_downscale).stem}-downscaled-{baseline_product.product_name}_baseline-{Path(downscaling_grid_file_aoi).stem}.nc"
                 logger.info("       Saving downscaled dataset into: %s", downscaled_file)
                 ds_to_downscale_downscaled.to_netcdf(downscaled_file)

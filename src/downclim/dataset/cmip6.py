@@ -132,6 +132,79 @@ class CMIP6Context(BaseModel):
             return [*v, "historical"]
         return list(v)
 
+    @lru_cache
+    def _get_cmip6_catalog(
+        self,
+        url: str,
+    ) -> pd.DataFrame:
+        """
+        Get CMIP6 catalog from ESGF.
+
+        Parameters
+        ----------
+        url: str
+            URL of the CMIP6 catalog, on csv format.
+
+        Returns
+        -------
+        pd.DataFrame
+            CMIP6 catalog.
+        """
+        return pd.read_csv(url)
+
+    def _inspect_cmip6(
+        self,
+        cmip6_catalog_url: str = DataProduct.CMIP6.url,
+    ) -> pd.DataFrame:
+        """
+        Inspects Google Cloud File System to get information about the available CMIP6 datasets provided the context.
+
+        Parameters
+        ----------
+        cmip6_catalog_url: str (default: DataProduct.CMIP6.url)
+            URL to the CMIP6 catalog on the Google Cloud File System.
+
+        Returns
+        -------
+        pd.DataFrame: DataFrame containing information about the available datasets matching the query
+        """
+
+        # name mapping between context / CMIP6 catalog and output
+        cmip6_name_mapping = {
+            "project": "activity_id",
+            "institute": "institution_id",
+            "source": "source_id",
+            "experiment": "experiment_id",
+            "ensemble": "member_id",
+            "frequency_table": "table_id",
+            "variable": "variable_id",
+            "grid_label": "grid_label",
+        }
+        inverse_cmip6_name_mapping = {v: k for k, v in cmip6_name_mapping.items()}
+        inverse_cmip6_name_mapping["zstore"] = "datanode"
+        inverse_cmip6_name_mapping["table_id"] = "table"
+
+        if self.frequency == Frequency.MONTHLY:
+            self.frequency_table = "Amon"
+
+        cmip6_catalog = self._get_cmip6_catalog(cmip6_catalog_url)
+
+        search_string_parts = []
+        for k, v in dict(self).items():
+            if v is not None:
+                if isinstance(v, str):
+                    search_string_parts.append(f"{cmip6_name_mapping[k]} == '{v}'")
+                else:
+                    search_string_parts.append(
+                        "("
+                        + " | ".join([f"{cmip6_name_mapping[k]} == '{w}'" for w in v])
+                        + ")"
+                    )
+        search_string = " & ".join(search_string_parts)
+
+        return cmip6_catalog.query(search_string).rename(columns=inverse_cmip6_name_mapping)
+
+
     def list_available_simulations(
         self,
         cmip6_catalog_url: str = DataProduct.CMIP6.url
@@ -152,7 +225,7 @@ class CMIP6Context(BaseModel):
         # gcfs connection
         # gcfs_connector = connect_to_gcfs()
         # list CMIP6 datasets matching context
-        cmip6_simulations = inspect_cmip6(context, cmip6_catalog_url)
+        cmip6_simulations = self._inspect_cmip6(cmip6_catalog_url)
         cmip6_simulations = cmip6_simulations.assign(domain="GLOBAL")
         cmip6_simulations = cmip6_simulations.assign(product="output")
 
@@ -170,25 +243,6 @@ class CMIP6Context(BaseModel):
             return cmip6_simulations
         return cmip6_simulations.reset_index().drop("index", axis=1)
 
-
-@lru_cache
-def _get_cmip6_catalog(
-    url: str,
-) -> pd.DataFrame:
-    """
-    Get CMIP6 catalog from ESGF.
-
-    Parameters
-    ----------
-    url: str
-        URL of the CMIP6 catalog, on csv format.
-
-    Returns
-    -------
-    pd.DataFrame
-        CMIP6 catalog.
-    """
-    return pd.read_csv(url)
 
 def _get_filename_from_cmip6_context(
     output_dir: str,
@@ -233,74 +287,6 @@ def get_cmip6_context_from_filename(filename: str) -> dict[str, str]:
     context_items = ["output_dir", "aoi_n", "data_product", "institute", "source", "experiment", "ensemble", "aggregation", "tmin", "tmax"]
     context_elements = [str(Path(filename).parent), *Path(filename).name.split(".nc")[0].split("_")]
     return dict(zip(context_items, context_elements, strict=False))
-
-
-def inspect_cmip6(
-    context: dict[str, str | Iterable[str]],
-    cmip6_catalog_url: str = DataProduct.CMIP6.url,
-) -> pd.DataFrame:
-    """
-    Inspects Google Cloud File System to get information about the available CMIP6 datasets provided the context.
-
-    Parameters
-    ----------
-    context: dict([str, str | Iterable[str]])
-        Dictionary containing information about the query on the CMIP6 dataset. Entries of the dictionary can be
-        either `str` or `Iterables` (e.g. `list`) if multiple values are provides.
-        These following keys are available (none are mandatory):
-            - activity_id: str, e.g "ScenarioMIP", "CMIP"
-            - institution_id: str, e.g "IPSL", "NCAR"
-            - source_id: str, e.g "IPSL-CM6A-LR", "CMCC-CM2-HR4"
-            - experiment_id: str, e.g "ssp126", "historical"
-            - member_id: str, e.g "r1i1p1f1"
-            - table_id: str, e.g "Amon", "day"
-            - variable_id: str, e.g "tas", "pr"
-            - grid_label: str, e.g "gn", "gr"
-            - zstore: str, e.g "gs://cmip6/CMIP6/ScenarioMIP/IPSL/IPSL-CM6A-LR/ssp126/r1i1p1f1/Amon/tas/gr/v20190903"
-            - dcpp_init_year: str, e.g "1850", "2015"
-            - version: str, e.g "20190903"
-    cmip6_catalog_url: str (default: DataProduct.CMIP6.url)
-        URL to the CMIP6 catalog on the Google Cloud File System.
-
-    Returns
-    -------
-    pd.DataFrame: DataFrame containing information about the available datasets matching the query
-    """
-
-    # name mapping between context / CMIP6 catalog and output
-    cmip6_name_mapping = {
-        "project": "activity_id",
-        "institute": "institution_id",
-        "source": "source_id",
-        "experiment": "experiment_id",
-        "ensemble": "member_id",
-        "frequency": "table_id",
-        "variable": "variable_id",
-        "grid_label": "grid_label",
-    }
-    inverse_cmip6_name_mapping = {v: k for k, v in cmip6_name_mapping.items()}
-    inverse_cmip6_name_mapping["zstore"] = "datanode"
-    inverse_cmip6_name_mapping["table_id"] = "table"
-
-    if context["frequency"] == Frequency.MONTHLY:
-        context["frequency"] = "Amon"
-
-    cmip6_catalog = _get_cmip6_catalog(cmip6_catalog_url)
-
-    search_string_parts = []
-    for k, v in context.items():
-        if v is not None:
-            if isinstance(v, str):
-                search_string_parts.append(f"{cmip6_name_mapping[k]} == '{v}'")
-            else:
-                search_string_parts.append(
-                    "("
-                    + " | ".join([f"{cmip6_name_mapping[k]} == '{w}'" for w in v])
-                    + ")"
-                )
-    search_string = " & ".join(search_string_parts)
-
-    return cmip6_catalog.query(search_string).rename(columns=inverse_cmip6_name_mapping)
 
 
 def get_cmip6(

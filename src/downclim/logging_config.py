@@ -1,4 +1,4 @@
-"""Configuration du logging pour le package DownClim."""
+"""Logging configuration for DownClim."""
 
 from __future__ import annotations
 
