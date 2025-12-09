@@ -9,6 +9,7 @@ import pandas as pd
 import pygadm
 from shapely import MultiPolygon
 from shapely.geometry import box
+from slugify import slugify
 
 from .logging_config import get_logger
 
@@ -56,7 +57,7 @@ def _get_aoi_gadm(aoi: str) -> gpd.geodataframe:
     aoi2 = re.sub("-", " ", aoi)
     code = pygadm.AdmNames(aoi2).GID_0[0]
     gdf = pygadm.AdmItems(admin=code)
-    gdf.NAME_0 = aoi
+    gdf.NAME_0 = slugify(aoi)
     return gdf
 
 
@@ -119,7 +120,7 @@ def get_aoi(
 
     if isinstance(aoi, str):
         logger.info("   AOI given as a string: retrieving from GADM for %s", aoi)
-        aoi_name = aoi
+        aoi_name = slugify(aoi)
         gdf = _get_aoi_gadm(aoi)
     elif isinstance(aoi, tuple):
         logger.info(
@@ -137,12 +138,12 @@ def get_aoi(
         gdf = gpd.GeoDataFrame(
             {"geometry": MultiPolygon([box(*aoi[:-1])]), "NAME_0": [aoi[-1]]}
         )
-        aoi_name = aoi[-1]
+        aoi_name = slugify(aoi[-1])
     elif isinstance(aoi, gpd.GeoDataFrame):
         logger.info("   AOI given as a GeoDataFrame: using existing geometry")
         gdf = aoi
         try:
-            aoi_name = gdf.NAME_0.to_numpy()[0]
+            aoi_name = slugify(gdf.NAME_0.to_numpy()[0])
         except AttributeError as err:
             msg = (
                 "The geodataframe must have a column 'NAME_0' with the name of the aoi."
