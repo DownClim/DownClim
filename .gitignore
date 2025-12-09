@@ -39,7 +39,6 @@ rules/
 build/
 _build/
 html/
-api_reference/
 *egg-info
 *pyc*
 # version

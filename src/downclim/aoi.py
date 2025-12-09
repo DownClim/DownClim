@@ -14,6 +14,7 @@ from .logging_config import get_logger
 
 logger = get_logger(__name__)
 
+
 def get_aoi_informations(
     aoi: Iterable[gpd.GeoDataFrame],
 ) -> tuple[list[str], list[pd.DataFrame]]:
@@ -118,10 +119,14 @@ def get_aoi(
 
     if isinstance(aoi, str):
         logger.info("   AOI given as a string: retrieving from GADM for %s", aoi)
-        gdf = _get_aoi_gadm(aoi)
         aoi_name = aoi
+        gdf = _get_aoi_gadm(aoi)
     elif isinstance(aoi, tuple):
-        logger.info("   AOI given as a tuple: creating geometry for box: %s, named %s", aoi[:-1], aoi[-1])
+        logger.info(
+            "   AOI given as a tuple: creating geometry for box: %s, named %s",
+            aoi[:-1],
+            aoi[-1],
+        )
         if len(aoi) != 5:
             msg = """If aoi is defined as a tuple,
             it must be on the format [xmin, ymin, xmax, ymax, name],
@@ -166,3 +171,24 @@ def sample_aoi(aoi: gpd.GeoDataFrame, log10_eval_pts: int = 4) -> gpd.GeoDataFra
 
 def save_to_file(gdf: gpd.GeoDataFrame, filename: str) -> None:
     gdf.to_file(filename)
+
+
+def extend_bounds(
+    aois_bounds: list[pd.DataFrame], extent: float = 2
+) -> list[pd.DataFrame]:
+    """
+    Extend the bounds of the AOI to avoid edge effects.
+
+    Parameters
+    ----------
+    aois_bounds: list[pd.DataFrame]
+        List of bounds of the AOI. Obtained from the `get_aoi_informations` function.
+    extend: float
+        Extend, in degrees, to each side of the AOI.
+    """
+    for aoi_b in aois_bounds:
+        aoi_b["minx"] -= extent
+        aoi_b["miny"] -= extent
+        aoi_b["maxx"] += extent
+        aoi_b["maxy"] += extent
+    return aois_bounds

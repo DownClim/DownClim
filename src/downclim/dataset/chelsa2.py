@@ -20,7 +20,7 @@ from .utils import (
     DataProduct,
     Frequency,
     VariableAttributes,
-    check_output_dir,
+    _check_output_dir,
     climatology_filename,
     get_monthly_climatology,
     prep_dataset,
@@ -73,9 +73,15 @@ def _get_chelsa2_one_file(
 
     with rio.open_rasterio(url) as ds_rio:
         for aoi_n, aoi_b in zip(aoi_name, aoi_bound, strict=False):
-            chelsa_files[aoi_n] = ds_rio.to_dataset("band").rename_vars({1: variable}).rio.clip_box(*aoi_b.to_numpy()[0]).assign_coords(time=datetime.datetime(year,month,1))
+            chelsa_files[aoi_n] = (
+                ds_rio.to_dataset("band")
+                .rename_vars({1: variable})
+                .rio.clip_box(*aoi_b.to_numpy()[0])
+                .assign_coords(time=datetime.datetime(year, month, 1))
+            )
 
     return chelsa_files
+
 
 def _get_chelsa2_year_var(
     aoi_name: list[str],
@@ -97,13 +103,20 @@ def _get_chelsa2_year_var(
     """
 
     if all(
-        Path(f"{tmp_directory}/{DataProduct.CHELSA.product_name}_{aoi_n}_{variable}_{year}.nc").is_file()
+        Path(
+            f"{tmp_directory}/{DataProduct.CHELSA.product_name}_{aoi_n}_{variable}_{year}.nc"
+        ).is_file()
         for aoi_n in aoi_name
     ):
-        logger.warning("""CHELSA data for year '%s' and variable '%s' already downloaded. Not downloading,
+        logger.warning(
+            """CHELSA data for year '%s' and variable '%s' already downloaded. Not downloading,
               but the behaviour of the function is not affected.
               If this is not the desired behavior, please remove the file(s) from the temporary folder
-              %s and rerun the function.""", year, variable, tmp_directory)
+              %s and rerun the function.""",
+            year,
+            variable,
+            tmp_directory,
+        )
         paths = {
             aoi_n: f"{tmp_directory}/{DataProduct.CHELSA.product_name}_{aoi_n}_{variable}_{year}.nc"
             for aoi_n in aoi_name
@@ -111,7 +124,11 @@ def _get_chelsa2_year_var(
 
     else:
         logger.info(
-            'Getting year "%s" for variables "%s" and areas of interest : "%s"', year, variable, aoi_name)
+            'Getting year "%s" for variables "%s" and areas of interest : "%s"',
+            year,
+            variable,
+            aoi_name,
+        )
         chelsa_datas = [
             _get_chelsa2_one_file(aoi_name, aoi_bound, variable, month, year, time_freq)
             for month in range(1, 13)
@@ -121,7 +138,9 @@ def _get_chelsa2_year_var(
 
         for aoi_n in aoi_name:
             logger.info("Concatenating data for area of interest : %s", aoi_n)
-            ds_chelsa = xr.concat([chelsa_data[aoi_n] for chelsa_data in chelsa_datas], dim='time')
+            ds_chelsa = xr.concat(
+                [chelsa_data[aoi_n] for chelsa_data in chelsa_datas], dim="time"
+            )
             for chelsa_data in chelsa_datas:
                 del chelsa_data[aoi_n]
             ds_chelsa = ds_chelsa[["time", "x", "y", variable]]
@@ -132,7 +151,9 @@ def _get_chelsa2_year_var(
             output_file = f"{tmp_directory}/{DataProduct.CHELSA.product_name}_{aoi_n}_{variable}_{year}.nc"
             paths[aoi_n] = output_file
             logger.info("Saving file %s", output_file)
-            ds_chelsa.chunk(chunks).to_netcdf(output_file) if chunks else ds_chelsa.to_netcdf(output_file)
+            ds_chelsa.chunk(chunks).to_netcdf(
+                output_file
+            ) if chunks else ds_chelsa.to_netcdf(output_file)
             del ds_chelsa
     return paths
 
@@ -141,8 +162,8 @@ def get_chelsa2(
     aoi: list[gpd.GeoDataFrame],
     variable: list[str],
     period: tuple[int, int] = (1980, 2005),
-    frequency: Frequency = Frequency.MONTHLY, # type: ignore[assignment]
-    aggregation: Aggregation = Aggregation.MONTHLY_MEAN, # type: ignore[assignment]
+    frequency: Frequency = Frequency.MONTHLY,  # type: ignore[assignment]
+    aggregation: Aggregation = Aggregation.MONTHLY_MEAN,  # type: ignore[assignment]
     nb_threads: int = 4,
     output_dir: str | None = None,
     tmp_dir: str | None = None,
@@ -173,8 +194,8 @@ def get_chelsa2(
         Aggregation method to build the climatology. Default is "monthly-means".
     nb_threads: int
         Number of threads to use for parallel downloading.
-    output_dir: str
-        Output directory where the CHELSA2 climatology will be stored.
+    output_dir = _check_output_dir(output_dir, f"./results/{data_product.product_name}")
+    tmp_dir = _check_output_dir(tmp_dir, f"./results/tmp/{data_product.product_name}")
         Default is "./results/chelsa2".
     tmp_dir: str
         Temporary directory where the intermediate CHELSA files will be stored.
@@ -194,8 +215,10 @@ def get_chelsa2(
     data_product = DataProduct.CHELSA
 
     # Create output and tmp directories
-    output_dir = check_output_dir(output_dir, f"./results/{data_product.product_name}")
-    tmp_dir = check_output_dir(tmp_dir, f"./results/tmp/{data_product.product_name}")
+    output_dir = __check_output_dir(
+        output_dir, f"./results/{data_product.product_name}"
+    )
+    tmp_dir = __check_output_dir(tmp_dir, f"./results/tmp/{data_product.product_name}")
 
     # Get AOIs information
     aoi_name, aoi_bound = get_aoi_informations(aoi)
@@ -217,7 +240,9 @@ def get_chelsa2(
     # We first need to check if the files exist before downloading and processing data
     # We update the list of AOIs to only include those that need to be processed
     for aoi_n in aoi_name:
-        output_filename = climatology_filename(output_dir, aoi_n, data_product, aggregation, period)
+        output_filename = climatology_filename(
+            output_dir, aoi_n, data_product, aggregation, period
+        )
         if Path(output_filename).is_file():
             msg = f"""
             File for area {aoi_n} and period {period} already exists: {output_filename}.
@@ -234,7 +259,7 @@ def get_chelsa2(
             for var in variable:
                 paths.append(
                     pool.starmap_async(
-                    #pool.starmap(
+                        # pool.starmap(
                         _get_chelsa2_year_var,
                         [
                             (aoi_name, aoi_bound, year, var, frequency, tmp_dir)
@@ -250,7 +275,9 @@ def get_chelsa2(
         logger.info("Merging files by aoi...")
         # Merge files to get one file per aoi for the period
         for aoi_n in aoi_name:
-            output_filename = climatology_filename(output_dir, aoi_n, data_product, aggregation, period)
+            output_filename = climatology_filename(
+                output_dir, aoi_n, data_product, aggregation, period
+            )
             logger.info("Merging files for area %s...", aoi_n)
             ds_aoi_period: xr.Dataset = xr.open_mfdataset(
                 paths2[aoi_n], decode_coords="all", parallel=True

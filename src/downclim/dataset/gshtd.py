@@ -43,12 +43,16 @@ def _get_gshtd_single(
     """
     logger.info(
         'Getting GSHTD data for period : "%s" and variable : "%s" on area of interest : "%s"',
-        period, variable, aoi_name
+        period,
+        variable,
+        aoi_name,
     )
     dmin, dmax = split_period(period)
 
     collection = {"tas": "TMEAN", "tasmin": "TMIN", "tasmax": "TMAX"}
-    ic = ee.ImageCollection(DataProduct.GSHTD.url + collection[variable]).filterDate(dmin, dmax)
+    ic = ee.ImageCollection(DataProduct.GSHTD.url + collection[variable]).filterDate(
+        dmin, dmax
+    )
     geom = ee.Geometry.Rectangle(*aoi_bounds.to_numpy()[0])
     if ic.size().getInfo() == 0:
         msg = f"""
@@ -139,20 +143,34 @@ def get_gshtd(
     # Connect to Earth Engine
     connect_to_ee(ee_project=ee_project)
 
+    executed_variables = []
+    for var in variable:
+        if var in data_product.variables:
+            executed_variables.append(var)
+        else:
+            logger.warning(
+                "Variable %s not available for %s. Skipping...",
+                var,
+                data_product.product_name,
+            )
+
     for aoi_n, aoi_b in zip(aoi_name, aoi_bound, strict=False):
         # First check if the data is already downloaded
-        output_file = (
-            climatology_filename(output_dir, aoi_n, data_product, aggregation, tuple(period))
+        output_file = climatology_filename(
+            output_dir, aoi_n, data_product, aggregation, tuple(period)
         )
         if Path(output_file).is_file():
             logger.warning(
                 """File %s already exists, skipping...
-                If this is not the expected behaviour, please remove the file and run the function again.""", output_file
+                If this is not the expected behaviour, please remove the file and run the function again.""",
+                output_file,
             )
             continue
         ds = xr.merge(
             [
-                _get_gshtd_single(aoi_b, aoi_n, var, tuple(period), time_frequency, aggregation)
+                _get_gshtd_single(
+                    aoi_b, aoi_n, var, tuple(period), time_frequency, aggregation
+                )
                 for var in variable
             ]
         )
