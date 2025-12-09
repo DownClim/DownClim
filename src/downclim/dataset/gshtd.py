@@ -17,7 +17,7 @@ from .utils import (
     DataProduct,
     Frequency,
     VariableAttributes,
-    check_output_dir,
+    _check_output_dir,
     climatology_filename,
     get_monthly_climatology,
     get_monthly_mean,
@@ -135,7 +135,7 @@ def get_gshtd(
     data_product = DataProduct.GSHTD
 
     # Create output directory
-    output_dir = check_output_dir(output_dir, f"./results/{data_product.product_name}")
+    output_dir = _check_output_dir(output_dir, f"./results/{data_product.product_name}")
 
     # Get AOIs information
     aoi_name, aoi_bound = get_aoi_informations(aoi)
