@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import asdict
 from pathlib import Path
 
 import ee
@@ -16,7 +15,6 @@ from .utils import (
     Aggregation,
     DataProduct,
     Frequency,
-    VariableAttributes,
     _check_output_dir,
     climatology_filename,
     get_monthly_climatology,
@@ -25,6 +23,8 @@ from .utils import (
     save_grid_file,
     split_period,
 )
+
+data_product = DataProduct.ERA5
 
 logger = get_logger(__name__)
 
@@ -70,12 +70,12 @@ def _get_era5_area_period(
     )
     dmin, dmax = split_period(period)
 
-    ic = ee.ImageCollection(DataProduct.ERA5.url).filterDate(dmin, dmax)  # type: ignore
+    ic = ee.ImageCollection(data_product.url).filterDate(dmin, dmax)  # type: ignore
     geom = ee.Geometry.Rectangle(*aoi_bounds.to_numpy()[0])  # type: ignore
     if ic.size().getInfo() == 0:
         msg = f"""
                 No data found for the period {dmin} - {dmax}.
-                ERA5 dataset is available from {DataProduct.ERA5.period[0]} to {DataProduct.ERA5.period[1]}.
+                ERA5 dataset is available from {data_product.period[0]} to {data_product.period[1]}.
                 """
         logger.error(msg)
         raise ValueError(msg)
@@ -84,12 +84,25 @@ def _get_era5_area_period(
         [ic], engine="ee", projection=ic.first().select(0).projection(), geometry=geom
     )
 
+    execute_variables = []
+    for var in variable:
+        for k, v in data_product.variables_names.items():
+            if var == v:
+                execute_variables.append(k)
+                break
+        else:
+            logger.warning(
+                "Variable %s not available for %s. Skipping them...",
+                var,
+                data_product.product_name,
+            )
+
     ds = (
-        ds.transpose("time", "lat", "lon")[variable]
+        ds.transpose("time", "lat", "lon")[execute_variables]
         .rio.set_spatial_dims(x_dim="lon", y_dim="lat")
         .rio.write_crs("epsg:4362")
     )
-    ds = prep_dataset(ds, DataProduct.ERA5)
+    ds = prep_dataset(ds, data_product)
 
     if time_frequency == Frequency.MONTHLY:
         ds = get_monthly_mean(ds)
@@ -153,8 +166,6 @@ def get_era5(
 
     logger.info("Downloading ERA5 data...")
 
-    data_product = DataProduct.ERA5
-
     # Create output directory
     output_dir = _check_output_dir(output_dir, f"./results/{data_product.product_name}")
 
@@ -163,19 +174,6 @@ def get_era5(
 
     # Connect to Earth Engine
     connect_to_ee(ee_project=ee_project)
-
-    execute_variables = []
-    for var in variable:
-        for k, v in data_product.variables_names.items():
-            if var == v:
-                execute_variables.append(k)
-                break
-        else:
-            logger.warning(
-                "Variable %s not available for %s. Skipping them...",
-                var,
-                data_product.product_name,
-            )
 
     for aoi_n, aoi_b in zip(aois_names, aois_bounds, strict=False):
         # First check if the data is already downloaded
@@ -190,7 +188,7 @@ def get_era5(
             )
             continue
         ds = _get_era5_area_period(
-            aoi_b, aoi_n, execute_variables, period, time_frequency, aggregation
+            aoi_b, aoi_n, variable, period, time_frequency, aggregation
         )
         ds.to_netcdf(output_file)
 

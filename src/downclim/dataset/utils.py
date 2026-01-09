@@ -7,7 +7,6 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-import cftime
 import numpy as np
 import xarray as xr
 import xesmf as xe
@@ -170,7 +169,7 @@ class DataProduct(DataProductProperties, Enum):
         "cmip6",
         (1850, 2100),
         {},
-        {"pr": 60 * 60 * 24, "tas": 1, "tasmin": 1, "tasmax": 1},
+        {"pr": 60.0 * 60.0 * 24.0, "tas": 1.0, "tasmin": 1.0, "tasmax": 1.0},
         {"pr": 0, "tas": -273.15, "tasmin": -273.15, "tasmax": -273.15},
         {"lon": "lon", "lat": "lat"},
         "https://storage.googleapis.com/cmip6/cmip6-zarr-consolidated-stores.csv",
@@ -179,10 +178,10 @@ class DataProduct(DataProductProperties, Enum):
         "cordex",
         (1850, 2100),
         {},
-        {"pr": 60 * 60 * 24, "tas": 1, "tasmin": 1, "tasmax": 1},
-        {"pr": 0, "tas": -273.15, "tasmin": -273.15, "tasmax": -273.15},
+        {"pr": 60.0 * 60.0 * 24.0, "tas": 1.0, "tasmin": 1.0, "tasmax": 1.0},
+        {"pr": 0.0, "tas": -273.15, "tasmin": -273.15, "tasmax": -273.15},
         {"lon": "lon", "lat": "lat"},
-        "https://esgf-node.ipsl.upmc.fr/esg-search",
+        "https://esgf-node.ipsl.upmc.fr/esg-search",  # https://esg-dn1.nsc.liu.se/esg-search
     )
     GSHTD = (
         "gshtd",
@@ -197,8 +196,8 @@ class DataProduct(DataProductProperties, Enum):
         "chirps",
         (1980, 2024),
         {"precipitation": "pr"},
-        {"pr": 1},
-        {"pr": 0},
+        {"pr": 1.0},
+        {"pr": 0.0},
         {"lon": "lon", "lat": "lat"},
         "UCSB-CHG/CHIRPS/DAILY",
     )
@@ -329,9 +328,10 @@ def prep_dataset(ds: xr.Dataset, data_product: DataProduct) -> xr.Dataset:
             ds[key] = (
                 ds[key] * data_product.scale_factor[key] + data_product.add_offset[key]
             )
-            ds[key].attrs = asdict(VariableAttributes[str(key)].value)
-            if data_product.variables_names:
-                ds.rename({key: data_product.variables_names[key]})
+            ds[key].attrs = asdict(
+                VariableAttributes[data_product.variables_names[key]]
+            )
+            ds = ds.rename({key: data_product.variables_names[key]})
         except KeyError as error:
             msg = f"Can't find scale factor and/or offset for variable {key} in dataset {data_product.product_name}."
             raise KeyError(msg) from error
@@ -345,9 +345,10 @@ def prep_dataset(ds: xr.Dataset, data_product: DataProduct) -> xr.Dataset:
         ds = ds.assign_coords(lon=(((ds.lon + 180) % 360) - 180))
         ds = ds.roll(lon=int(len(ds["lon"]) / 2), roll_coords=True)
 
-    return ds.rio.write_crs("epsg:4326", inplace=True).rio.set_spatial_dims(
-        x_dim="lon", y_dim="lat", inplace=True
-    )
+    ## return ds.rio.write_crs("epsg:4326", inplace=True).rio.set_spatial_dims(
+    ##     x_dim="lon", y_dim="lat", inplace=True
+    ## )
+    return ds.rio.write_crs("epsg:4326").rio.set_spatial_dims(x_dim="lon", y_dim="lat")
 
 
 def get_monthly_mean(ds: xr.Dataset) -> xr.Dataset:

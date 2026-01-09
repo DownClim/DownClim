@@ -16,7 +16,7 @@ import xarray as xr
 from pydantic import BaseModel, Field, field_validator
 from pyesgf.search.connection import SearchConnection
 
-from ..aoi import get_aoi_informations
+from ..aoi import extend_bounds, get_aoi_informations
 from ..logging_config import get_logger
 from .connectors import connect_to_esgf
 from .utils import (
@@ -300,18 +300,19 @@ class CORDEXContext(BaseModel):
 
 
 def _get_cordex_wget(
-    script: str,
-    i: int,
+    script_path: Path,
     periods: list[tuple[(int, int)]],
     tmp_dir: str = "./results/tmp/cordex",
-) -> bool:
-    script_path = Path(f"{tmp_dir}/wget_{i}.sh")
+):
+    # First read the script
+    with script_path.open(mode="r", encoding="utf-8") as reader:
+        lines = reader.readlines()
 
-    # Write script to file
-    # Check if the file already exists
-    # Select only required files corresponding to the required periods
+    # Now rewrite the script to file
+    # 1. Check if the .nc file already exists
+    # 2. Select only required files corresponding to the required periods
     with script_path.open(mode="w", encoding="utf-8") as writer:
-        for line in script.split("\n"):
+        for line in lines:
             if re.match(r".*\.(nc)", line):
                 if (
                     not Path(tmp_dir)
@@ -325,13 +326,12 @@ def _get_cordex_wget(
                     if any(
                         period[0] <= tmax and period[1] >= tmin for period in periods
                     ):
-                        writer.write(line + "\n")
+                        writer.write(line)
             else:
-                writer.write(line + "\n")
+                writer.write(line)
 
     script_path.chmod(0o750)
     subprocess.check_output(["/bin/bash", script_path.name], cwd=tmp_dir)
-    return True
 
 
 @lru_cache
@@ -389,6 +389,7 @@ def get_download_scripts(
     simulations: pd.DataFrame,
     esgf_credential: str | None = None,
     server: str = DataProduct.CORDEX.url,
+    output_dir: str = ".",
 ) -> pd.DataFrame:
     """Get the esgf download scripts for the simulations described in the DataFrame.
 
@@ -396,6 +397,7 @@ def get_download_scripts(
         simulations (pd.DataFrame): DataFrame containing the simulations.
         esgf_credential (str, optional): Path to the ESGF credentials file, if needs to reconnect.
         server (str, optional): URL to the ESGF node. Defaults to "https://esgf-node.ipsl.upmc.fr/esg-search".
+        output_dir (str): Directory where the download scripts will be saved. Defaults to current directory.
 
     Returns:
        pd.DataFrame: same DataFrame as the input with the download scripts added.
@@ -408,18 +410,27 @@ def get_download_scripts(
     connector = connect_to_esgf(esgf_credential, server=server)
 
     facets = ", ".join(simulations_columns)
-    cordex_scripts = []
+    download_scripts_files = []
     for _, row in simulations.iterrows():
         logger.info("Getting download script for simulation:")
         logger.info(row)
         context = row.to_dict()
         context["version"] = context["version"][1:]
         context["data_node"] = context.pop("datanode")
-        ctx = connector.new_context(facets=facets, **context)
-        cordex_scripts.append(
-            ctx.search(ignore_facet_check=True)[0].file_context().get_download_script()
-        )
-    return simulations.assign(download_script=cordex_scripts)
+        download_script_file = f"{output_dir}/wget_{context['project']}_{context['product']}_{context['domain']}_{context['institute']}_{context['driving_model']}_{context['experiment']}_{context['ensemble']}_{context['rcm_name']}_{context['rcm_version']}_{context['time_frequency']}_{context['variable']}.sh"
+        download_scripts_files.append(download_script_file)
+        if Path(download_script_file).is_file():
+            logger.info("Script %s already exists, skipping.", download_scripts_file)
+        else:
+            ctx = connector.new_context(facets=facets, **context)
+            download_script = (
+                ctx.search(ignore_facet_check=True)[0]
+                .file_context()
+                .get_download_script()
+            )
+            with Path(download_script_file).open(mode="w", encoding="utf-8") as f:
+                f.write(download_script)
+    return simulations.assign(download_script=download_scripts_files)
 
 
 def get_context_from_filename(filename: str) -> dict[str, str]:
@@ -558,7 +569,9 @@ def get_cordex(
 
     Raises
     ------
-    KeyError: If the 'download_script' column is not present in the `cordex_simulations` DataFrame.
+    KeyError: If the 'download_script' column is not present in the `cordex_simulations` DataFrame. It must contain
+        the path to the wget script to download CORDEX data. cf. :func: get_download_scripts and
+        `pyesgf documentation <https://esgf-pyclient.readthedocs.io/en/latest/api.html#pyesgf.search.context.SearchContext.get_download_script>`_
     ValueError: If the aggregation method is not supported (currently only MONTHLY_MEAN is implemented).
     Warning: If the AOI is not in the domain of the simulation selected.
 
@@ -572,15 +585,10 @@ def get_cordex(
     # Create output and tmp directories
     output_dir = _check_output_dir(output_dir, f"./results/{data_product.product_name}")
     tmp_dir = _check_output_dir(tmp_dir, f"./results/tmp/{data_product.product_name}")
-    # if output_dir is None:
-    #     output_dir = f"./results/{data_product.product_name}"
-    # if tmp_dir is None:
-    #     tmp_dir = f"./results/tmp/{data_product.product_name}"
-    # Path(tmp_dir).mkdir(parents=True, exist_ok=True)
-    # Path(output_dir).mkdir(parents=True, exist_ok=True)
 
     # Get AOIs information
     aois_names, aois_bounds = get_aoi_informations(aoi)
+    aois_bounds = extend_bounds(aois_bounds)
     domains = cordex_simulations["domain"].unique()
     all_cordex_domains = _get_cordex_domains()
     cordex_domains = all_cordex_domains[
@@ -599,7 +607,7 @@ def get_cordex(
     if "download_script" not in cordex_simulations.columns:
         if esgf_credentials is not None:
             cordex_simulations = get_download_scripts(
-                cordex_simulations, esgf_credentials, server
+                cordex_simulations, esgf_credentials, server, tmp_dir
             )
         else:
             msg = """To retrieve the desired CORDEX data, you need to get the 'download_scripts' from ESGF.
@@ -616,8 +624,8 @@ def get_cordex(
         pool.starmap_async(
             _get_cordex_wget,
             [
-                (script, i, periods_years, tmp_dir)
-                for i, script in enumerate(cordex_simulations["download_script"])
+                (Path(script_path), periods_years, tmp_dir)
+                for _, script_path in enumerate(cordex_simulations["download_script"])
             ],
         ).get()
 
@@ -646,8 +654,8 @@ def get_cordex(
                 continue
             # Extend the AOI to avoid edge effects
             ds_aoi = ds.sel(
-                rlon=slice(aoi_b["minx"] - 2, aoi_b["maxx"] + 2),
-                rlat=slice(aoi_b["miny"] - 2, aoi_b["maxy"] + 2),
+                rlon=slice(aoi_b["minx"], aoi_b["maxx"]),
+                rlat=slice(aoi_b["miny"], aoi_b["maxy"]),
             )
             # write per aoi and period
             for period_year, period_name in zip(
