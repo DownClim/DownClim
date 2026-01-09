@@ -9,10 +9,12 @@ import pandas as pd
 import pygadm
 from shapely import MultiPolygon
 from shapely.geometry import box
+from slugify import slugify
 
 from .logging_config import get_logger
 
 logger = get_logger(__name__)
+
 
 def get_aoi_informations(
     aoi: Iterable[gpd.GeoDataFrame],
@@ -55,7 +57,7 @@ def _get_aoi_gadm(aoi: str) -> gpd.geodataframe:
     aoi2 = re.sub("-", " ", aoi)
     code = pygadm.AdmNames(aoi2).GID_0[0]
     gdf = pygadm.AdmItems(admin=code)
-    gdf.NAME_0 = aoi
+    gdf.NAME_0 = slugify(aoi)
     return gdf
 
 
@@ -118,10 +120,14 @@ def get_aoi(
 
     if isinstance(aoi, str):
         logger.info("   AOI given as a string: retrieving from GADM for %s", aoi)
+        aoi_name = slugify(aoi)
         gdf = _get_aoi_gadm(aoi)
-        aoi_name = aoi
     elif isinstance(aoi, tuple):
-        logger.info("   AOI given as a tuple: creating geometry for box: %s, named %s", aoi[:-1], aoi[-1])
+        logger.info(
+            "   AOI given as a tuple: creating geometry for box: %s, named %s",
+            aoi[:-1],
+            aoi[-1],
+        )
         if len(aoi) != 5:
             msg = """If aoi is defined as a tuple,
             it must be on the format [xmin, ymin, xmax, ymax, name],
@@ -132,12 +138,12 @@ def get_aoi(
         gdf = gpd.GeoDataFrame(
             {"geometry": MultiPolygon([box(*aoi[:-1])]), "NAME_0": [aoi[-1]]}
         )
-        aoi_name = aoi[-1]
+        aoi_name = slugify(aoi[-1])
     elif isinstance(aoi, gpd.GeoDataFrame):
         logger.info("   AOI given as a GeoDataFrame: using existing geometry")
         gdf = aoi
         try:
-            aoi_name = gdf.NAME_0.to_numpy()[0]
+            aoi_name = slugify(gdf.NAME_0.to_numpy()[0])
         except AttributeError as err:
             msg = (
                 "The geodataframe must have a column 'NAME_0' with the name of the aoi."
@@ -166,3 +172,24 @@ def sample_aoi(aoi: gpd.GeoDataFrame, log10_eval_pts: int = 4) -> gpd.GeoDataFra
 
 def save_to_file(gdf: gpd.GeoDataFrame, filename: str) -> None:
     gdf.to_file(filename)
+
+
+def extend_bounds(
+    aois_bounds: list[pd.DataFrame], extent: float = 2
+) -> list[pd.DataFrame]:
+    """
+    Extend the bounds of the AOI to avoid edge effects.
+
+    Parameters
+    ----------
+    aois_bounds: list[pd.DataFrame]
+        List of bounds of the AOI. Obtained from the `get_aoi_informations` function.
+    extend: float
+        Extend, in degrees, to each side of the AOI.
+    """
+    for aoi_b in aois_bounds:
+        aoi_b["minx"] -= extent
+        aoi_b["miny"] -= extent
+        aoi_b["maxx"] += extent
+        aoi_b["maxy"] += extent
+    return aois_bounds
