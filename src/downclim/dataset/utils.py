@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+from collections import namedtuple
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from datetime import datetime as dt
 from enum import Enum
@@ -20,6 +22,8 @@ logger = get_logger(__name__)
 os.environ["GTIFF_SRS_SOURCE"] = "EPSG"
 
 TIME_CODER = xr.coders.CFDatetimeCoder(use_cftime=True)
+
+LonLatNames = namedtuple("LonLatNames", ["lon", "lat"])
 
 
 class Frequency(MultiValueEnum):
@@ -72,7 +76,8 @@ class DataProductProperties:
         variables_names (dict[str, str]): name of the variables in the data product and their correspondence as CMOR names
         scale_factor (dict[str, float]): scale factor for each variable in the data product.
         add_offset (dict[str, float]): add offset for each variable in the data product.
-        lon_lat_names (dict[str, str]): longitude and latitude variable names.
+        lon_lat_dims_names (tuple(LonLat)): longitude and latitude names used for dimensions
+        lon_lat_names (dict[str, str]): longitude and latitude names used for coordinates
         url (str): url to download the data product.
             If the data is stored on earthengine, provides the image collection path instead.
 
@@ -83,7 +88,8 @@ class DataProductProperties:
     variables_names: dict[str, str]
     scale_factor: dict[str, float]
     add_offset: dict[str, float]
-    lon_lat_names: dict[str, str]
+    lon_lat_dims_names: tuple[LonLatNames]
+    lon_lat_coords_names: tuple[LonLatNames]
     url: str
 
 
@@ -127,10 +133,10 @@ class DataProduct(DataProductProperties, Enum):
             "surface_pressure": 0,
             "mean_sea_level_pressure": 0,
         },
-        {"lon": "lon", "lat": "lat"},
+        (LonLatNames("lon", "lat")),
+        (LonLatNames("lon", "lat")),
         "ECMWF/ERA5/MONTHLY",
     )
-
     # cmi: Climate moisture index (kg.m-2.month-1)
     # hurs : near surface relative humidity (%)
     # rsds: surface solar radiation downwards (MJ.m-2.day-1)
@@ -162,7 +168,8 @@ class DataProduct(DataProductProperties, Enum):
             "tasmax": -273.15,
             "vpd": 0,
         },
-        {"lon": "x", "lat": "y"},
+        (LonLatNames("lon", "lat")),
+        (LonLatNames("x", "y")),
         "https://os.zhdk.cloud.switch.ch/chelsav2/GLOBAL",
     )
     CMIP6 = (
@@ -171,7 +178,8 @@ class DataProduct(DataProductProperties, Enum):
         {},
         {"pr": 60.0 * 60.0 * 24.0, "tas": 1.0, "tasmin": 1.0, "tasmax": 1.0},
         {"pr": 0, "tas": -273.15, "tasmin": -273.15, "tasmax": -273.15},
-        {"lon": "lon", "lat": "lat"},
+        (LonLatNames("lon", "lat")),
+        (LonLatNames("lon", "lat")),
         "https://storage.googleapis.com/cmip6/cmip6-zarr-consolidated-stores.csv",
     )
     CORDEX = (
@@ -180,7 +188,8 @@ class DataProduct(DataProductProperties, Enum):
         {},
         {"pr": 60.0 * 60.0 * 24.0, "tas": 1.0, "tasmin": 1.0, "tasmax": 1.0},
         {"pr": 0.0, "tas": -273.15, "tasmin": -273.15, "tasmax": -273.15},
-        {"lon": "lon", "lat": "lat"},
+        (LonLatNames("lon", "lat"), LonLatNames("rlon", "rlat")),
+        (LonLatNames("lon", "lat")),
         "https://esgf-node.ipsl.upmc.fr/esg-search",  # https://esg-dn1.nsc.liu.se/esg-search
     )
     GSHTD = (
@@ -189,7 +198,8 @@ class DataProduct(DataProductProperties, Enum):
         {"tas": "tas", "tasmin": "tasmin", "tasmax": "tasmax"},
         {"tas": 0.02, "tasmin": 0.02, "tasmax": 0.02},
         {"tas": -273.15, "tasmin": -273.15, "tasmax": -273.15},
-        {"lon": "lon", "lat": "lat"},
+        (LonLatNames("lon", "lat")),
+        (LonLatNames("lon", "lat")),
         "projects/sat-io/open-datasets/GSHTD/",
     )
     CHIRPS = (
@@ -198,7 +208,8 @@ class DataProduct(DataProductProperties, Enum):
         {"precipitation": "pr"},
         {"pr": 1.0},
         {"pr": 0.0},
-        {"lon": "lon", "lat": "lat"},
+        (LonLatNames("lon", "lat")),
+        (LonLatNames("lon", "lat")),
         "UCSB-CHG/CHIRPS/DAILY",
     )
 
@@ -303,6 +314,18 @@ def convert_cf_to_dt(t: np.datetime64) -> dt:
     return dt.strptime(str(t), "%Y-%m-%d %H:%M:%S")
 
 
+def get_lon_lat_names(
+    names_in_dataset: Iterable[LonLatNames], possible_names: Iterable[LonLatNames]
+) -> LonLatNames:
+    """Identify longitude and latitude names in a dataset, either for dimensions or coordinates."""
+    for pn in possible_names:
+        if all(pnds in names_in_dataset for pnds in (pn.lon, pn.lat)):
+            return pn
+    msg = "Could not find lon/lat names in dataset."
+    logger.warning(msg)
+    return LonLatNames("lon", "lat")
+
+
 def prep_dataset(ds: xr.Dataset, data_product: DataProduct) -> xr.Dataset:
     """Prepare a dataset for downscaling.
 
@@ -319,36 +342,66 @@ def prep_dataset(ds: xr.Dataset, data_product: DataProduct) -> xr.Dataset:
     -------
     xr.Dataset
         Prepared dataset with scaling and offsets applied to the variables.
+
+    Raises
+    ------
+    KeyError: If the variable names are not provided in the DataProduct or if the lon/lat names are not provided in the DataProduct.
     """
     cf = not isinstance(ds["time"].to_numpy()[0], np.datetime64)
     if cf:  # only cftime if not dt but should include more cases
         ds = xr.decode_cf(ds, decode_times=TIME_CODER)
     for key in ds:
         try:
-            ds[key] = (
-                ds[key] * data_product.scale_factor[key] + data_product.add_offset[key]
-            )
-            ds[key].attrs = asdict(
-                VariableAttributes[data_product.variables_names[key]]
-            )
-            ds = ds.rename({key: data_product.variables_names[key]})
+            if key in VariableAttributes.__members__:
+                ds[key] = (
+                    ds[key] * data_product.scale_factor[key]
+                    + data_product.add_offset[key]
+                )
+                # Check if there is a mapping for variable names
+                if data_product.variables_names:
+                    ds[key].attrs = asdict(
+                        VariableAttributes[data_product.variables_names[key]]
+                    )
+                    ds = ds.rename({key: data_product.variables_names[key]})
+                # Check if attributes exist for this variable.
+                # We consider this is not necessary in the other case as if variable_names exist, then
+                # the associated attributes are also defined.
+                ds[key].attrs = asdict(VariableAttributes[key])
+            else:
+                msg = f"""Can't find attributes for variable {key} in dataset {data_product.product_name}.
+                    Therefore we keep the variable but it won't have any attributes associated"""
+                logger.warning(msg)
         except KeyError as error:
             msg = f"Can't find scale factor and/or offset for variable {key} in dataset {data_product.product_name}."
             raise KeyError(msg) from error
-    ds = ds.rename(
-        {
-            data_product.lon_lat_names["lon"]: "lon",
-            data_product.lon_lat_names["lat"]: "lat",
-        }
-    )
+
+    # Check the name of lon/lat dimensions
+    # We do not rename, so that there is no overlap / confusion with coordinates names (necessary when 2D lon/lat).
+    lon_lat_dims_names = get_lon_lat_names(ds.dims, data_product.lon_lat_dims_names)
+    try:
+        # Check the name of lon/lat coordinates.
+        # Must be "lon" and "lat", otherwise, try to rename
+        if not (all(d in ds.coords for d in ("lon", "lat"))):
+            lon_lat_coords_names = get_lon_lat_names(
+                ds.coords, data_product.lon_lat_coords_names
+            )
+            ds = ds.rename(
+                {
+                    lon_lat_coords_names.lon: "lon",
+                    lon_lat_coords_names.lat: "lat",
+                }
+            )
+    except KeyError as error:
+        msg = """Can't find lon/lat names in dataset {data_product.product_name}."""
+        raise KeyError(msg) from error
+    # Normalize lon values
     if (ds.lon.max().values) > 180:
         ds = ds.assign_coords(lon=(((ds.lon + 180) % 360) - 180))
         ds = ds.roll(lon=int(len(ds["lon"]) / 2), roll_coords=True)
 
-    ## return ds.rio.write_crs("epsg:4326", inplace=True).rio.set_spatial_dims(
-    ##     x_dim="lon", y_dim="lat", inplace=True
-    ## )
-    return ds.rio.write_crs("epsg:4326").rio.set_spatial_dims(x_dim="lon", y_dim="lat")
+    return ds.rio.write_crs("epsg:4326").rio.set_spatial_dims(
+        x_dim=lon_lat_dims_names.lon, y_dim=lon_lat_dims_names.lat
+    )
 
 
 def get_monthly_mean(ds: xr.Dataset) -> xr.Dataset:
