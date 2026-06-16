@@ -12,8 +12,8 @@ from .dataset.cordex import get_cordex_context_from_filename
 from .dataset.utils import (
     Aggregation,
     DataProduct,
-    check_input_dir,
     _check_output_dir,
+    check_input_dir,
     climatology_filename,
 )
 from .logging_config import get_logger
@@ -188,10 +188,10 @@ def run_evaluation(
     ----------
         aoi: list[gpd.GeoDataFrame]
             List of areas of interest (AOI). Obtained from `get_aoi` function
-        evaluation_period: tuple[int, int]
-            Evaluation period as a tuple of (start_year, end_year)
-    output_dir = _check_output_dir(output_dir, "./results/evaluation", ["cmip6", "cordex"])
-            List of evaluation products to use, e.g. [DataProduct.CHELSA, DataProduct.CHIRPS]
+    evaluation_period: tuple[int, int]
+        Evaluation period as a tuple of (start_year, end_year)
+    evaluation_product: list[DataProduct]
+        List of evaluation products to use, e.g. [DataProduct.CHELSA, DataProduct.CHIRPS]
         cmip6_simulations_to_evaluate: list[str] | None
             List of CMIP6 simulations to evaluate.
             If None, all available simulations located in `<input_dir>/cmip6` will be used.
@@ -222,7 +222,7 @@ def run_evaluation(
     # Check input directory
     input_dir = check_input_dir(input_dir, "./results/downscaled")
     # Create output directory
-    output_dir = __check_output_dir(
+    output_dir = _check_output_dir(
         output_dir, "./results/evaluation", ["cmip6", "cordex"]
     )
 

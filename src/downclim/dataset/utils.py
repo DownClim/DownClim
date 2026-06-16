@@ -395,7 +395,7 @@ def prep_dataset(ds: xr.Dataset, data_product: DataProduct) -> xr.Dataset:
         msg = """Can't find lon/lat names in dataset {data_product.product_name}."""
         raise KeyError(msg) from error
     # Normalize lon values
-    if (ds.lon.max().values) > 180:
+    if (ds.lon.max().to_numpy()) > 180:
         ds = ds.assign_coords(lon=(((ds.lon + 180) % 360) - 180))
         ds = ds.roll(lon=int(len(ds["lon"]) / 2), roll_coords=True)
 

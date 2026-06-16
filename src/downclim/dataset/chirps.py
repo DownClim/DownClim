@@ -27,6 +27,7 @@ from .utils import (
 
 logger = get_logger(__name__)
 
+
 def _get_chirps_area_period(
     aoi_bounds: pd.DataFrame,
     aoi_name: str,
@@ -58,11 +59,15 @@ def _get_chirps_area_period(
     xr.Dataset
         CHIRPS data for the given area of interest and time period.
     """
-    logger.info('Getting CHIRPS data for period : "%s" and area of interest : "%s"', period, aoi_name)
+    logger.info(
+        'Getting CHIRPS data for period : "%s" and area of interest : "%s"',
+        period,
+        aoi_name,
+    )
     dmin, dmax = split_period(period)
 
-    ic = ee.ImageCollection(DataProduct.CHIRPS.url).filterDate(dmin, dmax) # type: ignore
-    geom = ee.Geometry.Rectangle(*aoi_bounds.to_numpy()[0]) # type: ignore
+    ic = ee.ImageCollection(DataProduct.CHIRPS.url).filterDate(dmin, dmax)  # type: ignore[attr-defined]
+    geom = ee.Geometry.Rectangle(*aoi_bounds.to_numpy()[0])  # type: ignore[attr-defined]
     if ic.size().getInfo() == 0:
         msg = f"""
                 No data found for the period {dmin} - {dmax}.
@@ -102,8 +107,8 @@ def _get_chirps_area_period(
 def get_chirps(
     aoi: list[gpd.GeoDataFrame],
     period: tuple[int, int] = (1980, 2005),
-    time_frequency: Frequency = Frequency.MONTHLY, # type: ignore[assignment]
-    aggregation: Aggregation = Aggregation.MONTHLY_MEAN, # type: ignore[assignment]
+    time_frequency: Frequency = Frequency.MONTHLY,  # type: ignore[assignment]
+    aggregation: Aggregation = Aggregation.MONTHLY_MEAN,  # type: ignore[assignment]
     output_dir: str | None = None,
     ee_project: str | None = None,
 ) -> None:
@@ -154,16 +159,17 @@ def get_chirps(
 
     for aoi_n, aoi_b in zip(aois_names, aois_bounds, strict=False):
         # First check if the data is already downloaded
-        output_file = climatology_filename(output_dir, aoi_n, data_product, aggregation, period)
+        output_file = climatology_filename(
+            output_dir, aoi_n, data_product, aggregation, period
+        )
         if Path(output_file).is_file():
             logger.warning(
                 """File %s already exists, skipping...
-                If this is not the expected behaviour, please remove the file and run the function again.""", output_file
+                If this is not the expected behaviour, please remove the file and run the function again.""",
+                output_file,
             )
             continue
-        ds = _get_chirps_area_period(
-            aoi_b, aoi_n, period, time_frequency, aggregation
-        )
+        ds = _get_chirps_area_period(aoi_b, aoi_n, period, time_frequency, aggregation)
         ds.to_netcdf(output_file)
 
         save_grid_file(output_dir, data_product, aoi_n, ds)

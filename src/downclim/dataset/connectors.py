@@ -40,18 +40,25 @@ def connect_to_ee(ee_project: str | None = None) -> None:
     try:
         # Try to get project config to check if already authenticated
         project_config = ee.data.getProjectConfig()
-        logger.info(f"Already connected to Earth Engine with project '{project_config['name'].split('/')[1]}'.")
+        logger.info(
+            "Already connected to Earth Engine with project '%s'.",
+            project_config["name"].split("/")[1],
+        )
     except ee.EEException:
         logger.warning("""You are not logged in to Earth Engine.
               Authenticating to Earth Engine...""")
         try:
             ee.Authenticate()
-            ee.Initialize(opt_url='https://earthengine-highvolume.googleapis.com', project=ee_project)
+            ee.Initialize(
+                opt_url="https://earthengine-highvolume.googleapis.com",
+                project=ee_project,
+            )
             logger.info("Successfully connected to Earth Engine.")
         except Exception as e:
             msg = "Failed to connect to Earth Engine. Please run `ee.Initialize(project = my_project_id)` first."
             logger.error(msg)
             raise RuntimeError(msg) from e
+
 
 def connect_to_gcfs(token: str = "anon") -> gcsfs.GCSFileSystem:
     """
@@ -71,7 +78,9 @@ def connect_to_gcfs(token: str = "anon") -> gcsfs.GCSFileSystem:
     return gcsfs.GCSFileSystem(token=token)
 
 
-def connect_to_esgf(esgf_credential: str, server: str = DataProduct.CORDEX.url) -> pyesgf.SearchConnection:
+def connect_to_esgf(
+    esgf_credential: str, server: str = DataProduct.CORDEX.url
+) -> pyesgf.SearchConnection:
     """
     Connector to ESGF server.
 

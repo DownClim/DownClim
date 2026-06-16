@@ -5,33 +5,33 @@ from importlib.metadata import metadata
 project = "DownClim"
 meta = metadata(project.lower())
 release = meta.get("version")
-copyright = 'MIT - CIRAD'
+copyright = "MIT - CIRAD"
 author = "Thomas Arsouze"
-desc = meta['Summary']
-version = ".".join(release.split('.')[:3])
+desc = meta["Summary"]
+version = ".".join(release.split(".")[:3])
 
 extensions = [
-    'sphinx.ext.autodoc',  # support for automatic inclusion of docstring
-    'sphinx.ext.autosummary',  # generates autodoc summaries
-    'sphinx.ext.doctest',  # inclusion and testing of doctest code snippets
-    'sphinx.ext.intersphinx', # support for linking to other projects
-    'sphinx.ext.mathjax',  # support for math equations
-    'sphinx.ext.ifconfig',  # support for conditional content
-    'sphinx.ext.viewcode',  # support for links to source code
-    'sphinx.ext.coverage',  # includes doc coverage stats in the documentation
-    'sphinx.ext.todo',      # support for todo items
-    'sphinx.ext.napoleon',  # support for numpy and google style docstrings
-    "sphinx_favicon",      # support for favicon
-    "sphinx_copybutton",      # support for copybutton in code blocks
-    "nbsphinx",     # for integrating jupyter notebooks
-    #"myst_parser",   # for parsing .md files
-    "myst_nb"       # myst with .md and notebooks (used for hiding cells)
-    ]
+    "sphinx.ext.autodoc",  # support for automatic inclusion of docstring
+    "sphinx.ext.autosummary",  # generates autodoc summaries
+    "sphinx.ext.doctest",  # inclusion and testing of doctest code snippets
+    "sphinx.ext.intersphinx",  # support for linking to other projects
+    "sphinx.ext.mathjax",  # support for math equations
+    "sphinx.ext.ifconfig",  # support for conditional content
+    "sphinx.ext.viewcode",  # support for links to source code
+    "sphinx.ext.coverage",  # includes doc coverage stats in the documentation
+    "sphinx.ext.todo",  # support for todo items
+    "sphinx.ext.napoleon",  # support for numpy and google style docstrings
+    "sphinx_favicon",  # support for favicon
+    "sphinx_copybutton",  # support for copybutton in code blocks
+    "nbsphinx",  # for integrating jupyter notebooks
+    # "myst_parser",   # for parsing .md files
+    "myst_nb",  # myst with .md and notebooks (used for hiding cells)
+]
 
 source_suffix = {
-    '.rst': 'restructuredtext',
-    '.ipynb': 'myst-nb',
-    '.md': 'myst-nb',
+    ".rst": "restructuredtext",
+    ".ipynb": "myst-nb",
+    ".md": "myst-nb",
 }
 
 exclude_patterns = [
@@ -46,7 +46,7 @@ exclude_patterns = [
 
 language = "en"
 # The name of the Pygments (syntax highlighting) style to use.
-pygments_style = 'sphinx'
+pygments_style = "sphinx"
 
 autosummary_generate = True
 

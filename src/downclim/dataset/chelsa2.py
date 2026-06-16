@@ -215,10 +215,8 @@ def get_chelsa2(
     data_product = DataProduct.CHELSA
 
     # Create output and tmp directories
-    output_dir = __check_output_dir(
-        output_dir, f"./results/{data_product.product_name}"
-    )
-    tmp_dir = __check_output_dir(tmp_dir, f"./results/tmp/{data_product.product_name}")
+    output_dir = _check_output_dir(output_dir, f"./results/{data_product.product_name}")
+    tmp_dir = _check_output_dir(tmp_dir, f"./results/tmp/{data_product.product_name}")
 
     # Get AOIs information
     aoi_name, aoi_bound = get_aoi_informations(aoi)

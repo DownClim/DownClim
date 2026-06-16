@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ee
+from downclim.getters import get_baseline_product
 
 from downclim.aoi import get_aoi, get_aoi_informations
 from downclim.dataset.chelsa2 import get_chelsa2
@@ -11,11 +12,12 @@ from downclim.dataset.cmip6 import CMIP6Context, get_cmip6
 from downclim.dataset.cordex import CORDEXContext, get_cordex, get_download_scripts
 from downclim.dataset.gshtd import get_gshtd
 from downclim.downclim import DownClimContext
-from downclim.getters import get_baseline_product
 
 # ee connection
 ee.Authenticate(force=True)
-ee.Initialize(opt_url="https://earthengine-highvolume.googleapis.com", project="downclim")
+ee.Initialize(
+    opt_url="https://earthengine-highvolume.googleapis.com", project="downclim"
+)
 
 # Get AOI
 aoi1 = get_aoi("Vanuatu")
@@ -35,7 +37,7 @@ get_chelsa2(
 get_chirps(
     aoi=[aoi1, aoi2],
     period=(1981, 1982),
-    project = "downclim", # project name for Earth Engine
+    project="downclim",  # project name for Earth Engine
 )
 
 # Get GSHTD data
@@ -61,14 +63,18 @@ downclim_context = DownClimContext(
 # Get CORDEX simulations
 cordex_context = CORDEXContext(
     domain=["AUS-22", "AFR-44"],
-    #institute=["SMHI"],
-    #driving_model=["IPSL-IPSL-CM5A-MR", "MIROC-MIROC5"],
+    # institute=["SMHI"],
+    # driving_model=["IPSL-IPSL-CM5A-MR", "MIROC-MIROC5"],
     experiment=["historical", "rcp26", "rcp85"],
     frequency="mon",
     variable=["pr", "tas"],
 )
-cordex_simulations = cordex_context.list_available_simulations(esgf_credential="config/esgf_credential.yaml")
-cordex_simulations = get_download_scripts(cordex_simulations, esgf_credential="config/esgf_credential.yaml")
+cordex_simulations = cordex_context.list_available_simulations(
+    esgf_credential="config/esgf_credential.yaml"
+)
+cordex_simulations = get_download_scripts(
+    cordex_simulations, esgf_credential="config/esgf_credential.yaml"
+)
 cordex_simulations.to_csv("results/cordex/cordex_simulations.csv")
 
 get_cordex(
@@ -78,9 +84,9 @@ get_cordex(
     evaluation_period=(2006, 2007),
     projection_period=(2071, 2072),
     output_dir="./results/cordex",
-    tmp_dir = "./results/tmp/cordex",
-    keep_tmp_dir = True,
-    esgf_credential="config/esgf_credential.yaml"
+    tmp_dir="./results/tmp/cordex",
+    keep_tmp_dir=True,
+    esgf_credential="config/esgf_credential.yaml",
 )
 
 # Get CMIP6 simulations

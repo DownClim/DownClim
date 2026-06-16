@@ -34,11 +34,7 @@ class TestDownClimLogging:
         with tempfile.TemporaryDirectory() as tmp_dir:
             log_file = Path(tmp_dir) / "test.log"
 
-            logger = setup_logging(
-                level="DEBUG",
-                log_file=str(log_file),
-                console=False
-            )
+            logger = setup_logging(level="DEBUG", log_file=str(log_file), console=False)
 
             # Test that a message is written
             logger.info("Test message")
@@ -56,7 +52,7 @@ class TestDownClimLogging:
                 level="INFO",
                 log_file=str(log_file),
                 console=False,
-                format_string="%(levelname)s: %(message)s"
+                format_string="%(levelname)s: %(message)s",
             )
 
             logger = logging.getLogger("downclim")
@@ -82,7 +78,9 @@ class TestDownClimLogging:
         final_count = len(logging.getLogger("downclim").handlers)
 
         # Handlers should not be duplicated
-        assert final_count <= initial_count + 1  # Tolerance for different configurations
+        assert (
+            final_count <= initial_count + 1
+        )  # Tolerance for different configurations
 
     def test_set_level_dynamically(self):
         """Test of dynamic level change."""
@@ -110,14 +108,13 @@ class TestDownClimLogging:
             setup_logging(
                 log_file=str(log_file),
                 max_file_size=1024,  # 1KB
-                backup_count=3
+                backup_count=3,
             )
 
             logger = logging.getLogger("downclim")
 
             # Check that a RotatingFileHandler is created
-            file_handlers = [h for h in logger.handlers
-                           if hasattr(h, 'maxBytes')]
+            file_handlers = [h for h in logger.handlers if hasattr(h, "maxBytes")]
 
             assert len(file_handlers) == 1
             handler = file_handlers[0]
@@ -126,17 +123,12 @@ class TestDownClimLogging:
 
     def test_console_only_configuration(self):
         """Test of console only configuration."""
-        setup_logging(
-            level="INFO",
-            log_file=None,
-            console=True
-        )
+        setup_logging(level="INFO", log_file=None, console=True)
 
         logger = logging.getLogger("downclim")
 
         # Check that there are only StreamHandlers
-        file_handlers = [h for h in logger.handlers
-                        if not hasattr(h, 'stream')]
+        file_handlers = [h for h in logger.handlers if not hasattr(h, "stream")]
 
         assert len(file_handlers) == 0
 
@@ -145,18 +137,17 @@ class TestDownClimLogging:
         with tempfile.TemporaryDirectory() as tmp_dir:
             log_file = Path(tmp_dir) / "file_only.log"
 
-            setup_logging(
-                level="INFO",
-                log_file=str(log_file),
-                console=False
-            )
+            setup_logging(level="INFO", log_file=str(log_file), console=False)
 
             logger = logging.getLogger("downclim")
 
             # Check that there are no StreamHandlers to stdout
-            stream_handlers = [h for h in logger.handlers
-                             if hasattr(h, 'stream') and
-                             hasattr(h.stream, 'name') and
-                             h.stream.name == '<stdout>']
+            stream_handlers = [
+                h
+                for h in logger.handlers
+                if hasattr(h, "stream")
+                and hasattr(h.stream, "name")
+                and h.stream.name == "<stdout>"
+            ]
 
             assert len(stream_handlers) == 0

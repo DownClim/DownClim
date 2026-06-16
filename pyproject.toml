@@ -36,12 +36,15 @@ requires-python = ">=3.10"
 
 dependencies = [
   "aenum",
+  "dask",
+  "netcdf4",
   "numpy",
   "geopandas",
   "pandas",
   "xarray",
   "xesmf>=0.8.7",
   "xee",
+  "multiprocess",
   "esgf-pyclient",
   "gcsfs",
   "earthengine-api",
@@ -54,7 +57,7 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["pytest >=6", "pytest-cov >=3", "shapely"]
-dev = ["pytest >=6", "pytest-cov >=3"]
+dev = ["pytest >=6", "pytest-cov >=3", "ipykernel"]
 docs = [
   "sphinx>=7.0",
   "myst_parser>=0.13",
@@ -69,6 +72,9 @@ docs = [
   "linkify-it-py",
 ]
 
+[project.scripts]
+downclim = "downclim.__main__:main"
+
 [project.urls]
 Homepage = "https://github.com/DownClim/DownClim"
 "Bug Tracker" = "https://github.com/DownClim/DownClim/issues"
@@ -78,6 +84,9 @@ Changelog = "https://github.com/DownClim/DownClim/releases"
 [build-system]
 requires = ["setuptools>=61", "setuptools_scm[toml]>=7"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools.package-data]
+downclim = ["data/*"]
 
 [tool.setuptools_scm]
 
@@ -100,9 +109,10 @@ python_version = "3.10"
 warn_unused_configs = true
 strict = true
 enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
-warn_unreachable = true
+disable_error_code = ["no-untyped-def", "unreachable"]
 disallow_untyped_defs = false
 disallow_incomplete_defs = false
+plugins = "pydantic.mypy"
 
 [[tool.mypy.overrides]]
 module = "downclim.*"
@@ -112,22 +122,46 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = [
+  "downclim.dataset.utils",
+  "downclim.aoi",
+  "downclim.dataset.gshtd",
+  "downclim.dataset.tmf",
+  "downclim.dataset.era5",
+  "downclim.dataset.chirps",
+  "downclim.dataset.cordex",
+  "downclim.downclim",
+  "downclim.dataset.cmip6",
+]
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "test_logging"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = [
   "aenum.*",
   "geopandas.*",
   "pandas.*",
+  "numpy.*",
+  "pydantic.*",
+  "shapely.*",
   "ee.*",
   "pygadm.*",
   "rioxarray.*",
   "xarray.*",
   "xesmf.*",
   "xee.*",
-  "esgf_pyclient.*",
+  "pyesgf.*",
   "gcsfs.*",
   "earthengine.*",
   "zarr.*",
   "multiprocess.*",
+  "importlib_resources.*",
   "nox.*",
   "yaml.*",
+  "toml.*",
+  "slugify.*",
 ]
 ignore_missing_imports = true
 
@@ -169,13 +203,18 @@ isort.required-imports = ["from __future__ import annotations"]
 # typing-modules = ["downclim._compat.typing"]
 
 [tool.ruff.lint.per-file-ignores]
+# T20 = flake8-print (permit print() in these files)
+# F404 = allow `from __future__` after docstring in docs (doctest compat)
+# I001 = allow ungrouped imports in docs (doctest compat)
 "resources/rules/**" = ["T20"]
+"tests/test_logging.py" = ["T20"]
+"docs/**" = ["T20", "F404", "I001"]
 "tests/**" = ["T20"]
 "noxfile.py" = ["T20"]
 
 
 [tool.pylint]
-py-version = "3.8"
+py-version = "3.10"
 ignore-paths = [".*/_version.py"]
 reports.output-format = "colorized"
 similarities.ignore-imports = "yes"

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from pathlib import Path
 from shutil import copyfile
 from typing import Any
@@ -25,6 +25,7 @@ from .logging_config import get_logger
 # Obtenir le logger pour ce module
 logger = get_logger(__name__)
 
+
 class DownClimContext(BaseModel):
     """Class to define the general context for the Downclim package.
     This includes all the parameters needed to run the downscaling process.
@@ -46,12 +47,12 @@ class DownClimContext(BaseModel):
     )
     time_frequency: Frequency = Field(
         default=Frequency.MONTHLY,
-        examples=[Frequency.MONTHLY, "monthly"], # type: ignore[assignment]
-        description="Time frequency of the data."
+        examples=[Frequency.MONTHLY, "monthly"],  # type: ignore[assignment]
+        description="Time frequency of the data.",
     )
     downscaling_aggregation: Aggregation = Field(
         default=Aggregation.MONTHLY_MEAN,
-        examples=[Aggregation.MONTHLY_MEAN,"monthly_mean"], # type: ignore[assignment]
+        examples=[Aggregation.MONTHLY_MEAN, "monthly_mean"],  # type: ignore[assignment]
         description="Aggregation method to build the climatology.",
     )
     baseline_product: DataProduct = Field(
@@ -81,14 +82,15 @@ class DownClimContext(BaseModel):
     )
     cordex_context: CORDEXContext | None = Field(
         default=None,
-        examples=[CORDEXContext(domain=["AUS-22"], experiment=["historical", "rcp85"]),
-                  {"domain": ["AUS-22"], "experiment": ["historical", "rcp85"]}],
+        examples=[
+            CORDEXContext(domain=["AUS-22"], experiment=["historical", "rcp85"]),
+            {"domain": ["AUS-22"], "experiment": ["historical", "rcp85"]},
+        ],
         description="CORDEXContext object to use for defining the CORDEX data required.",
     )
     cmip6_context: CMIP6Context | None = Field(
         default=None,
-        examples=[CMIP6Context(),
-                  {"experiment": ["historical", "ssp585"]}],
+        examples=[CMIP6Context(), {"experiment": ["historical", "ssp585"]}],
         description="CMIP6Context object to use for defining the CMIP6 data required.",
     )
     historical_period: tuple[int, int] = Field(
@@ -118,20 +120,20 @@ class DownClimContext(BaseModel):
     )
     chunks: dict[str, int] = Field(
         default={"time": 1, "lat": 1000, "lon": 1000},
-        examples=[{"time": 1, "lat": 1000, "lon": 1000},
-                  {"time": 10, "lat": 100, "lon": 100}],
+        examples=[
+            {"time": 1, "lat": 1000, "lon": 1000},
+            {"time": 10, "lat": 100, "lon": 100},
+        ],
         description="Chunks to use for the computation.",
     )
     output_dir: str = Field(
         default="./results",
-        examples=["/my/output_dir/path/",
-                  "/another/output_dir/path/"],
+        examples=["/my/output_dir/path/", "/another/output_dir/path/"],
         description="Output directory to save the results.",
     )
     tmp_dir: str = Field(
         default="./tmp",
-        examples=["/my/tmp_dir/path/",
-                  "/another/tmp_dir/path/"],
+        examples=["/my/tmp_dir/path/", "/another/tmp_dir/path/"],
         description="Temporary directory when downloading and processing the data.",
     )
     keep_tmp_dir: bool = Field(
@@ -253,7 +255,9 @@ class DownClimContext(BaseModel):
     @field_validator("evaluation_product", mode="before")
     @classmethod
     def validate_evaluation_product(
-        cls, v: str | DataProduct | Iterable[str] | Iterable[DataProduct] | Any | None, info: ValidationInfo
+        cls,
+        v: str | DataProduct | Iterable[str] | Iterable[DataProduct] | Any | None,
+        info: ValidationInfo,
     ) -> list[DataProduct]:
         if v is None:
             msg = "No evaluation products provided. Defaulting to the same product as baseline product."
@@ -270,7 +274,9 @@ class DownClimContext(BaseModel):
 
     @field_validator("downscaling_method", mode="after")
     @classmethod
-    def validate_downscaling_method(cls, v: str | DownscaleMethod | Any) -> DownscaleMethod:
+    def validate_downscaling_method(
+        cls, v: str | DownscaleMethod | Any
+    ) -> DownscaleMethod:
         if isinstance(v, str):
             v_lower = v.lower()
             if v_lower in ("bias_correction", "bias-correction"):
@@ -330,25 +336,31 @@ class DownClimContext(BaseModel):
     @model_validator(mode="after")
     def check_periods_consistency(self) -> Self:
         product = self.baseline_product
-        if self.historical_period[0] < product.period[0] or self.historical_period[1] > product.period[1]:
+        if (
+            self.historical_period[0] < product.period[0]
+            or self.historical_period[1] > product.period[1]
+        ):
             msg = f"""Baseline period must be within the period of the baseline product.
             The period available for {product.product_name} is {product.period}."""
             raise ValueError(msg)
         for product in self.evaluation_product:
-            if self.evaluation_period[0] < product.period[0] or self.evaluation_period[1] > product.period[1]:
+            if (
+                self.evaluation_period[0] < product.period[0]
+                or self.evaluation_period[1] > product.period[1]
+            ):
                 msg = f"""Evaluation period must be within the period of the evaluation product.
                 The period available for {product.product_name} product is {product.period}."""
                 raise ValueError(msg)
         return self
 
-    @field_validator("historical_period", "evaluation_period", "projection_period", mode="after")
+    @field_validator(
+        "historical_period", "evaluation_period", "projection_period", mode="after"
+    )
     @classmethod
-    def check_periods(
-        cls, v: str | tuple[int] | list[int]
-    ) -> tuple[int, int]:
+    def check_periods(cls, v: str | tuple[int, int] | list[int]) -> tuple[int, int]:
         if isinstance(v, str):
             v = cls.parse_period(v)
-        if not isinstance(v, list | tuple) or len(v) != 2:
+        if len(v) != 2:
             msg = """All periods must be defined as an iterable (tuple, list) of 2 integers (start year, end year),
             or as a string in the format 'YYYY-YYYY'."""
             raise ValueError(msg)
@@ -363,7 +375,7 @@ class DownClimContext(BaseModel):
 
     @field_validator("projection_period", mode="after")
     @classmethod
-    def check_projection_period(cls, v: Iterable[int]) -> tuple[int, int]:
+    def check_projection_period(cls, v: Sequence[int]) -> tuple[int, int]:
         if v[0] <= 2015:
             msg = """Beginning of projection period must start in 2015 or after.
             This corresponds to the first year of the CMIP6 / CORDEX scenarios."""
@@ -372,7 +384,7 @@ class DownClimContext(BaseModel):
             msg = """End of projection period must end in 2100 or earlier.
             This corresponds to the last year of the CMIP6 / CORDEX scenarios."""
             raise ValueError(msg)
-        return tuple(v)
+        return (v[0], v[1])
 
     @field_validator("output_dir", "tmp_dir", mode="after")
     @classmethod
@@ -404,7 +416,7 @@ class DownClimContext(BaseModel):
         if isinstance(v, str):
             with Path(v).open(encoding="utf-8") as f:
                 v = yaml.safe_load(f)
-            if not all(key in v for key in mandatory_keys):
+            if not isinstance(v, dict) or not all(key in v for key in mandatory_keys):
                 msg = f"""ESGF credentials must have {mandatory_keys} keys.
                     Please check your yaml file."""
                 raise ValueError(msg)
@@ -441,33 +453,33 @@ class DownClimContext(BaseModel):
         logger.info("Downloading baseline product...")
         if self.baseline_product is DataProduct.CHELSA:
             get_chelsa2(
-                aoi = self.aoi,
-                variable = self.variable,
-                period = self.historical_period,
-                frequency = self.time_frequency,
-                aggregation = self.downscaling_aggregation,
-                nb_threads = self.nb_threads,
-                output_dir = f"{self.output_dir}/{self.baseline_product.product_name}",
-                tmp_dir = f"{self.tmp_dir}/{self.baseline_product.product_name}",
-                keep_tmp_dir = self.keep_tmp_dir,
+                aoi=self.aoi,
+                variable=self.variable,
+                period=self.historical_period,
+                frequency=self.time_frequency,
+                aggregation=self.downscaling_aggregation,
+                nb_threads=self.nb_threads,
+                output_dir=f"{self.output_dir}/{self.baseline_product.product_name}",
+                tmp_dir=f"{self.tmp_dir}/{self.baseline_product.product_name}",
+                keep_tmp_dir=self.keep_tmp_dir,
             )
         elif self.baseline_product is DataProduct.CHIRPS:
             get_chirps(
-                aoi = self.aoi,
-                period = self.historical_period,
-                time_frequency = self.time_frequency,
-                aggregation = self.downscaling_aggregation,
-                output_dir = f"{self.output_dir}/{self.baseline_product.product_name}",
+                aoi=self.aoi,
+                period=self.historical_period,
+                time_frequency=self.time_frequency,
+                aggregation=self.downscaling_aggregation,
+                output_dir=f"{self.output_dir}/{self.baseline_product.product_name}",
             )
         elif self.baseline_product is DataProduct.GSHTD:
             get_gshtd(
-                aoi = self.aoi,
-                variable = self.variable,
-                period = self.historical_period,
-                time_frequency = self.time_frequency,
-                aggregation = self.downscaling_aggregation,
-                output_dir = f"{self.output_dir}/{self.baseline_product.product_name}",
-                )
+                aoi=self.aoi,
+                variable=self.variable,
+                period=self.historical_period,
+                time_frequency=self.time_frequency,
+                aggregation=self.downscaling_aggregation,
+                output_dir=f"{self.output_dir}/{self.baseline_product.product_name}",
+            )
         else:
             msg = f"Unknown or not implemented data product '{self.baseline_product.product_name}'."
             raise ValueError(msg)
@@ -484,39 +496,40 @@ class DownClimContext(BaseModel):
         for product in self.evaluation_product:
             if product is DataProduct.CHELSA:
                 get_chelsa2(
-                    aoi = self.aoi,
-                    variable = self.variable,
-                    period = self.evaluation_period,
-                    frequency = self.time_frequency,
-                    aggregation = self.downscaling_aggregation,
-                    nb_threads = self.nb_threads,
-                    output_dir = f"{self.output_dir}/{product.product_name}",
-                    tmp_dir = f"{self.tmp_dir}/{product.product_name}",
-                    keep_tmp_dir = self.keep_tmp_dir,
+                    aoi=self.aoi,
+                    variable=self.variable,
+                    period=self.evaluation_period,
+                    frequency=self.time_frequency,
+                    aggregation=self.downscaling_aggregation,
+                    nb_threads=self.nb_threads,
+                    output_dir=f"{self.output_dir}/{product.product_name}",
+                    tmp_dir=f"{self.tmp_dir}/{product.product_name}",
+                    keep_tmp_dir=self.keep_tmp_dir,
                 )
             elif product is DataProduct.CHIRPS:
                 get_chirps(
-                    aoi = self.aoi,
-                    period = self.evaluation_period,
-                    time_frequency = self.time_frequency,
-                    aggregation = self.downscaling_aggregation,
-                    output_dir = f"{self.output_dir}/{product.product_name}",
-                    ee_project = self.ee_project
+                    aoi=self.aoi,
+                    period=self.evaluation_period,
+                    time_frequency=self.time_frequency,
+                    aggregation=self.downscaling_aggregation,
+                    output_dir=f"{self.output_dir}/{product.product_name}",
+                    ee_project=self.ee_project,
                 )
             elif product is DataProduct.GSHTD:
                 get_gshtd(
-                    aoi = self.aoi,
-                    variable = self.variable,
-                    period = self.evaluation_period,
-                    time_frequency = self.time_frequency,
-                    aggregation = self.downscaling_aggregation,
-                    output_dir = f"{self.output_dir}/{product.product_name}",
-                    ee_project = self.ee_project
+                    aoi=self.aoi,
+                    variable=self.variable,
+                    period=self.evaluation_period,
+                    time_frequency=self.time_frequency,
+                    aggregation=self.downscaling_aggregation,
+                    output_dir=f"{self.output_dir}/{product.product_name}",
+                    ee_project=self.ee_project,
                 )
             else:
-                msg = f"Unknown or not implemented data product '{product.product_name}'."
+                msg = (
+                    f"Unknown or not implemented data product '{product.product_name}'."
+                )
                 raise ValueError(msg)
-
 
     def _get_simulations(self) -> None:
         """Get the simulations data for the DownClim context.
@@ -537,33 +550,32 @@ class DownClimContext(BaseModel):
             logger.info("     Downloading CMIP6 simulations...")
             cmip6_simulations = self.cmip6_context.list_available_simulations()
             get_cmip6(
-                aoi = self.aoi,
+                aoi=self.aoi,
                 cmip6_simulations=cmip6_simulations,
-                historical_period = self.historical_period,
-                evaluation_period = self.evaluation_period,
-                projection_period = self.projection_period,
-                aggregation = self.downscaling_aggregation,
-                output_dir = f"{self.output_dir}/cmip6",
-                chunks = self.chunks,
+                historical_period=self.historical_period,
+                evaluation_period=self.evaluation_period,
+                projection_period=self.projection_period,
+                aggregation=self.downscaling_aggregation,
+                output_dir=f"{self.output_dir}/cmip6",
+                chunks=self.chunks,
             )
         if self.use_cordex:
             logger.info("     Downloading CORDEX simulations...")
             cordex_simulations = inspect_cordex(
-                context = self.cordex_context,
-                esgf_credential = self.esgf_credentials
+                context=self.cordex_context, esgf_credential=self.esgf_credentials
             )
             get_cordex(
-                aoi = self.aoi,
+                aoi=self.aoi,
                 cordex_simulations=cordex_simulations,
-                historical_period = self.historical_period,
-                evaluation_period = self.evaluation_period,
-                projection_period = self.projection_period,
-                aggregation = self.downscaling_aggregation,
-                output_dir = f"{self.output_dir}/cordex",
-                tmp_dir = self.tmp_dir,
-                nb_threads = self.nb_threads,
-                keep_tmp_dir = self.keep_tmp_dir,
-                esgf_credentials = self.esgf_credentials,
+                historical_period=self.historical_period,
+                evaluation_period=self.evaluation_period,
+                projection_period=self.projection_period,
+                aggregation=self.downscaling_aggregation,
+                output_dir=f"{self.output_dir}/cordex",
+                tmp_dir=self.tmp_dir,
+                nb_threads=self.nb_threads,
+                keep_tmp_dir=self.keep_tmp_dir,
+                esgf_credentials=self.esgf_credentials,
             )
 
     def download_data(self) -> None:
@@ -584,13 +596,12 @@ class DownClimContext(BaseModel):
         self._get_simulations()
         logger.info("Data download complete.")
 
-
     def run_downscaling(
         self,
         cmip6_simulations_to_downscale: list[str] | None = None,
         cordex_simulations_to_downscale: list[str] | None = None,
         downscaling_grid_file: str | None = None,
-        periods_to_downscale: Iterable[str] = ("evaluation", "projection")
+        periods_to_downscale: Iterable[str] = ("evaluation", "projection"),
     ) -> None:
         """Runs the downscaling process with the current context.
 
@@ -614,18 +625,20 @@ class DownClimContext(BaseModel):
 
         """
         run_downscaling(
-            aoi = self.aoi,
-            historical_period = self.historical_period,
-            evaluation_period = self.evaluation_period,
-            projection_period = self.projection_period,
-            baseline_product = self.baseline_product,
-            cmip6_simulations_to_downscale = cmip6_simulations_to_downscale,
-            cordex_simulations_to_downscale = cordex_simulations_to_downscale,
-            downscaling_grid_file = downscaling_grid_file,
-            periods_to_downscale = periods_to_downscale,
-            aggregation = self.downscaling_aggregation,
-            method = self.downscaling_method,
-            input_dir = self.output_dir,
+            aoi=self.aoi,
+            historical_period=self.historical_period,
+            evaluation_period=self.evaluation_period,
+            projection_period=self.projection_period,
+            baseline_product=self.baseline_product,
+            cmip6_simulations_to_downscale=cmip6_simulations_to_downscale,
+            cordex_simulations_to_downscale=cordex_simulations_to_downscale,
+            downscaling_grid_file=[downscaling_grid_file]
+            if downscaling_grid_file
+            else None,
+            periods_to_downscale=periods_to_downscale,
+            aggregation=self.downscaling_aggregation,
+            method=self.downscaling_method,
+            input_dir=self.output_dir,
         )
 
     def run_evaluation(self, evaluation_grid_file: list[str] | None = None) -> None:
@@ -637,14 +650,14 @@ class DownClimContext(BaseModel):
 
         """
         run_evaluation(
-            aoi = self.aoi,
-            evaluation_period = self.evaluation_period,
-            evaluation_product = self.evaluation_product,
-            evaluation_grid_file = evaluation_grid_file
+            aoi=self.aoi,
+            evaluation_period=self.evaluation_period,
+            evaluation_product=self.evaluation_product,
+            evaluation_grid_file=evaluation_grid_file,
         )
 
 
-def generate_DownClimContext_template_file(output_file: str) -> None: # pylint: disable=invalid-name
+def generate_DownClimContext_template_file(output_file: str) -> None:  # pylint: disable=invalid-name
     """Generates a template file for DownClimContext.
     This is a pre-filled .yaml file with all the parameters available.
 
@@ -652,11 +665,11 @@ def generate_DownClimContext_template_file(output_file: str) -> None: # pylint: 
         output_file (str): File to save the template.
     """
     copyfile(
-        files("downclim").parent.parent.joinpath("data", "DownClimContext_template.yaml"), output_file
+        files("downclim").joinpath("data", "DownClimContext_template.yaml"), output_file
     )
 
 
-def define_DownClimContext_from_file(file: str) -> DownClimContext: # pylint: disable=invalid-name
+def define_DownClimContext_from_file(file: str) -> DownClimContext:  # pylint: disable=invalid-name
     """Reads a DownClimContext from a file.
 
     Args:

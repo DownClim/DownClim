@@ -3,15 +3,18 @@ from __future__ import annotations
 import re
 import shutil
 import subprocess
+import tempfile
 from collections.abc import Iterable
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 import geopandas as gpd
+import multiprocess as mp
 import numpy as np
 import pandas as pd
 import xarray as xr
+import yaml
 from pydantic import BaseModel, Field, field_validator
 from pyesgf.search.connection import SearchConnection
 
@@ -298,6 +301,35 @@ class CORDEXContext(BaseModel):
         return cordex_simulations
 
 
+def inspect_cordex(
+    context: CORDEXContext,
+    esgf_credential: dict[str, str] | str | None = None,
+    server: str = DataProduct.CORDEX.url,
+) -> pd.DataFrame:
+    """List available CORDEX simulations for a given context.
+
+    Args:
+        context: CORDEXContext defining the search parameters.
+        esgf_credential: ESGF credentials dict or path to yaml file.
+        server: ESGF node URL.
+
+    Returns:
+        DataFrame of available simulations.
+    """
+    if isinstance(esgf_credential, dict):
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as tmp:
+            yaml.dump(esgf_credential, tmp)
+            credential_path = tmp.name
+        result = context.list_available_simulations(
+            esgf_credential=credential_path, server=server
+        )
+        Path(credential_path).unlink()
+        return result
+    return context.list_available_simulations(
+        esgf_credential=esgf_credential, server=server
+    )
+
+
 def _get_cordex_wget(
     script_path: Path,
     periods: list[tuple[(int, int)]],
@@ -368,8 +400,8 @@ def _aoi_in_domain(aoi_bounds: pd.DataFrame, domain: pd.DataFrame) -> bool:
 
 
 def _check_cordex_download(
-    simulations: pd.DataFrame,
-    tmp_dir: str = "./results/tmp/cordex",
+    _simulations: pd.DataFrame,
+    _tmp_dir: str = "./results/tmp/cordex",
 ) -> pd.DataFrame:
     """Check if the download of the CORDEX data has been successful.
 
@@ -619,14 +651,14 @@ def get_cordex(
     periods_names = ["baseline", "evaluation", "projection"]
 
     # download
-    # with mp.Pool(nb_threads) as pool:
-    #     pool.starmap_async(
-    #         _get_cordex_wget,
-    #         [
-    #             (Path(script_path), periods_years, tmp_dir)
-    #             for _, script_path in enumerate(cordex_simulations["download_script"])
-    #         ],
-    #     ).get()
+    with mp.Pool(nb_threads) as pool:
+        pool.starmap_async(
+            _get_cordex_wget,
+            [
+                (Path(script_path), periods_years, tmp_dir)
+                for _, script_path in enumerate(cordex_simulations["download_script"])
+            ],
+        ).get()
 
     # rearrange and sort files downloaded
     files = [str(f) for f in Path(tmp_dir).iterdir() if re.match(r".*\.(nc)", f.name)]
@@ -646,8 +678,8 @@ def get_cordex(
         try:
             ds = xr.open_mfdataset(group["filename"].values, parallel=True)
             ds = prep_dataset(ds, DataProduct.CORDEX)
-        # WARNING: temporary fix for CORDEX data, in case the file does not exist
-        except:
+        except Exception as e:
+            logger.warning("Could not process CORDEX files for %s: %s", group_name, e)
             break
         # For each aoi
         for aoi_n, aoi_b in zip(aois_names, aois_bounds, strict=False):
@@ -658,8 +690,8 @@ def get_cordex(
                 continue
             # Extend the AOI to avoid edge effects
             ds_aoi = ds.sel(
-                rlon=slice(aoi_b["minx"].values[0], aoi_b["maxx"].values[0]),
-                rlat=slice(aoi_b["miny"].values[0], aoi_b["maxy"].values[0]),
+                rlon=slice(aoi_b["minx"].to_numpy()[0], aoi_b["maxx"].to_numpy()[0]),
+                rlat=slice(aoi_b["miny"].to_numpy()[0], aoi_b["maxy"].to_numpy()[0]),
             )
             # write per aoi and period
             for period_year, period_name in zip(

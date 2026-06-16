@@ -85,7 +85,7 @@ class DownClimLoggerConfig:
                 log_path,
                 maxBytes=max_file_size,
                 backupCount=backup_count,
-                encoding='utf-8'
+                encoding="utf-8",
             )
             file_handler.setLevel(level)
             file_handler.setFormatter(formatter)
@@ -158,6 +158,7 @@ def get_logger(name: str) -> logging.Logger:
         Logger configured
     """
     return DownClimLoggerConfig.get_logger(name)
+
 
 def setup_logging(**kwargs: Any) -> logging.Logger:
     """

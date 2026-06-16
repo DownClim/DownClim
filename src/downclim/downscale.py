@@ -223,9 +223,7 @@ def run_downscaling(
     aggregation: Aggregation = Aggregation.MONTHLY_MEAN,  # type: ignore[assignment]
     method: DownscaleMethod = DownscaleMethod.BIAS_CORRECTION,
     input_dir: str | None = None,
-    output_dir=_check_output_dir(
-        output_dir, "./results/downscaled", ["cmip6", "cordex", "../regridder"]
-    ),
+    output_dir: str | None = None,
 ) -> None:
     """
     Run the downscaling process.

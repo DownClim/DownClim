@@ -70,8 +70,8 @@ def _get_era5_area_period(
     )
     dmin, dmax = split_period(period)
 
-    ic = ee.ImageCollection(data_product.url).filterDate(dmin, dmax)  # type: ignore
-    geom = ee.Geometry.Rectangle(*aoi_bounds.to_numpy()[0])  # type: ignore
+    ic = ee.ImageCollection(data_product.url).filterDate(dmin, dmax)  # type: ignore[attr-defined]
+    geom = ee.Geometry.Rectangle(*aoi_bounds.to_numpy()[0])  # type: ignore[attr-defined]
     if ic.size().getInfo() == 0:
         msg = f"""
                 No data found for the period {dmin} - {dmax}.

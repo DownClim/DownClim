@@ -15,15 +15,18 @@ __all__ = [
 
 # Main exports
 try:
-    from .downclim import (
+    from .downclim import (  # noqa: F401
         DownClimContext,
         define_DownClimContext_from_file,
         generate_DownClimContext_template_file,
     )
-    __all__.extend([
-        "DownClimContext",
-        "define_DownClimContext_from_file",
-        "generate_DownClimContext_template_file",
-    ])
+
+    __all__.extend(
+        [
+            "DownClimContext",
+            "define_DownClimContext_from_file",
+            "generate_DownClimContext_template_file",
+        ]
+    )
 except ImportError:
     pass
