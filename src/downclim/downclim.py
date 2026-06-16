@@ -351,6 +351,9 @@ class DownClimContext(BaseModel):
                 msg = f"""Evaluation period must be within the period of the evaluation product.
                 The period available for {product.product_name} product is {product.period}."""
                 raise ValueError(msg)
+        if self.esgf_credentials is None and self.use_cordex:
+            msg = "'use_cordex' is True but no ESGF credentials provided. Please provide them to access the data."
+            raise ValueError(msg)
         return self
 
     @field_validator(

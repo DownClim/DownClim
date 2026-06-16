@@ -3,7 +3,7 @@
 The following examples show off the functionality in `DownClim`.
 
 ```{nbgallery}
-:name: nbshpinx-gallery
+:name: nbsphinx-gallery
 :glob:
 
 ./examples/*

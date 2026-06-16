@@ -1,14 +1,19 @@
+"""Tests for AOI (Area of Interest) functions."""
+
 from __future__ import annotations
 
 import shutil
 
 import geopandas as gpd
+import pandas as pd
 import pytest
 from shapely import MultiPolygon
+from shapely.geometry import box
 
-from downclim.aoi import get_aoi
+from downclim.aoi import extend_bounds, get_aoi, get_aoi_informations, sample_aoi
 
 
+@pytest.mark.network()
 def test_get_aoi_from_string():
     vanuatu = get_aoi("Vanuatu")
     assert isinstance(vanuatu, gpd.GeoDataFrame)
@@ -24,7 +29,7 @@ def test_get_aoi_from_tuple():
     assert isinstance(box, gpd.GeoDataFrame)
     assert box.NAME_0.to_numpy()[0] == "box"
 
-    with pytest.raises(ValueError, match=r".* aoi is defined as a tuple .*"):
+    with pytest.raises(ValueError, match=r"If aoi is defined as a tuple"):
         get_aoi((0, 0, 10, 10, "box", "extra"))
 
     shutil.rmtree("./results/test/", ignore_errors=True)
@@ -52,3 +57,25 @@ def test_get_aoi_from_geodataframe():
 
     shutil.rmtree("./results/aois/", ignore_errors=True)
     shutil.rmtree("./results/test/", ignore_errors=True)
+
+
+@pytest.mark.network()
+def test_get_aoi_informations():
+    aoi = get_aoi("Vanuatu")
+    names, bounds = get_aoi_informations(aoi)
+    assert "Vanuatu" in names
+    assert len(bounds) > 0
+
+
+def test_extend_bounds():
+    bounds = pd.DataFrame({"minx": [-10], "miny": [-10], "maxx": [10], "maxy": [10]})
+    extended = extend_bounds([bounds.copy()], extent=2.0)
+    assert extended[0]["minx"].iloc[0] < bounds["minx"].iloc[0]
+    assert extended[0]["maxx"].iloc[0] > bounds["maxx"].iloc[0]
+
+
+def test_sample_aoi():
+    aoi = gpd.GeoDataFrame(geometry=[box(0, 0, 1, 1)], data={"NAME_0": ["test"]})
+    grid = sample_aoi(aoi, log10_eval_pts=4)
+    assert isinstance(grid, gpd.GeoDataFrame)
+    assert len(grid) > 0

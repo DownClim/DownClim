@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 import xarray as xr
 
-from downclim.evaluation import compute_mean, compute_rmse, compute_std
+from downclim.evaluation import (
+    compute_correlation,
+    compute_mean,
+    compute_rmse,
+    compute_std,
+)
 
 
 def _make_test_datasets() -> tuple[xr.Dataset, xr.Dataset]:
@@ -35,3 +41,14 @@ def test_compute_std():
     ref, ev = _make_test_datasets()
     result = compute_std(ref, ev)
     assert "tas" in result
+
+
+def test_compute_correlation():
+    ref, ev = _make_test_datasets()
+    result = compute_correlation(ref, ev)
+    assert "tas" in result
+
+
+@pytest.mark.network
+def test_run_evaluation():
+    pass  # requires full data pipeline

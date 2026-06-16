@@ -23,8 +23,8 @@ extensions = [
     "sphinx.ext.napoleon",  # support for numpy and google style docstrings
     "sphinx_favicon",  # support for favicon
     "sphinx_copybutton",  # support for copybutton in code blocks
-    "nbsphinx",  # for integrating jupyter notebooks
     # "myst_parser",   # for parsing .md files
+    "nbsphinx",  # nbgallery directive and notebook processing
     "myst_nb",  # myst with .md and notebooks (used for hiding cells)
 ]
 
@@ -59,7 +59,7 @@ myst_heading_anchors = 3
 myst_url_schemes = ("http", "https", "mailto")
 
 html_theme = "furo"
-html_baseurl = "https://DownClim.github.io/DownClim/"
+html_baseurl = "https://downclim.readthedocs.io/en/latest/"
 
 myst_enable_extensions = [
     "colon_fence",
@@ -85,7 +85,21 @@ nitpick_ignore = [
     ("py:class", "_io.BytesIO"),
 ]
 
+suppress_warnings = [
+    "myst.xref_missing",
+    "myst.header",
+    "docutils",
+]
+
 always_document_param_types = True
+
+# Notebook execution — uncomment when notebooks can run without failures
+# nb_execution_mode = "auto"
+# nb_execution_timeout = 600
+# nb_execution_allow_errors = True
+# nb_execution_excludepatterns = [
+#     "examples/get_available_simulation.ipynb",
+# ]
 
 
 nbsphinx_prolog = r"""

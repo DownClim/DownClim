@@ -28,8 +28,8 @@ LonLatNames = namedtuple("LonLatNames", ["lon", "lat"])
 
 class Frequency(MultiValueEnum):
     """Class to define the frequency of the data handled.
-    Usually 'daily | monthly | annualy'.
-        So far only 'monthly' is implemented.
+
+    Usually 'daily | monthly | annualy'. So far only 'monthly' is implemented.
 
     Args:
         MultiValueEnum ('str'): string representation of the time frequency.

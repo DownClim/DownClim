@@ -85,7 +85,7 @@ def build_api_docs(session: nox.Session) -> None:
     session.run(
         "sphinx-apidoc",
         "-o",
-        "docs/api/",
+        "docs/api_reference/",
         "--module-first",
         "--no-toc",
         "--force",

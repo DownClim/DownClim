@@ -186,36 +186,36 @@ def run_evaluation(
 
     Parameters
     ----------
-        aoi: list[gpd.GeoDataFrame]
-            List of areas of interest (AOI). Obtained from `get_aoi` function
+    aoi: list[gpd.GeoDataFrame]
+        List of areas of interest (AOI). Obtained from `get_aoi` function.
     evaluation_period: tuple[int, int]
-        Evaluation period as a tuple of (start_year, end_year)
+        Evaluation period as a tuple of (start_year, end_year).
     evaluation_product: list[DataProduct]
-        List of evaluation products to use, e.g. [DataProduct.CHELSA, DataProduct.CHIRPS]
-        cmip6_simulations_to_evaluate: list[str] | None
-            List of CMIP6 simulations to evaluate.
-            If None, all available simulations located in `<input_dir>/cmip6` will be used.
-            Default is None.
-        cordex_simulations_to_evaluate: list[str] | None
-            List of CORDEX simulations to evaluate.
-            If None, all available simulations located in `<input_dir>/cordex` will be used.
-            Default is None.
-        evaluation_grid_file: list[str] | None
-            List of evaluation grid files to use. Has to be the same length as `evaluation_product`.
-            If None, grid from the evaluation product will be used.
-            Default is None.
-        aggregation: Aggregation
-            Aggregation method to use. Default is Aggregation.MONTHLY_MEAN.
-        input_dir: str | None
-            Input directory for the evaluation files. If None, taken as `results/downscaled`.
-            Default is None.
-        output_dir: str | None
-            Output directory for the evaluation results. If None, taken as `results/evaluation`.
-            Default is None.
+        List of evaluation products to use, e.g. [DataProduct.CHELSA, DataProduct.CHIRPS].
+    cmip6_simulations_to_evaluate: list[str] | None
+        List of CMIP6 simulations to evaluate.
+        If None, all available simulations located in `<input_dir>/cmip6` will be used.
+        Default is None.
+    cordex_simulations_to_evaluate: list[str] | None
+        List of CORDEX simulations to evaluate.
+        If None, all available simulations located in `<input_dir>/cordex` will be used.
+        Default is None.
+    evaluation_grid_file: list[str] | None
+        List of evaluation grid files to use. Has to be the same length as `evaluation_product`.
+        If None, grid from the evaluation product will be used.
+        Default is None.
+    aggregation: Aggregation
+        Aggregation method to use. Default is Aggregation.MONTHLY_MEAN.
+    input_dir: str | None
+        Input directory for the evaluation files. If None, taken as `results/downscaled`.
+        Default is None.
+    output_dir: str | None
+        Output directory for the evaluation results. If None, taken as `results/evaluation`.
+        Default is None.
 
     Returns
     -------
-        xr.Dataset: Dataset with the evaluation.
+    xr.Dataset: Dataset with the evaluation.
     """
 
     logger.info("Starting evaluation process...")

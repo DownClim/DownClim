@@ -1,6 +1,8 @@
 # DownClim - Downscale Climate Projections
 
-Sylvain Schmitt - Thomas Arsouze - Ghislain Vieilledent
+[Sylvain Schmitt](https://github.com/sylvainschmitt) -
+[Thomas Arsouze](https://github.com/thomasarsouze) -
+[Ghislain Vieilledent](https://github.com/ghislainv)
 
 [![Actions Status][actions-badge]][actions-link]
 [![Documentation Status][rtd-badge]][rtd-link]
@@ -50,19 +52,36 @@ an automated `snakemake` workflow easily reproducible and scalable associated to
 
 ## Installation
 
-As `DownClim` is under active development, no official release is available so
-far. You can install from the source code:
-
 ```bash
 git clone git@github.com:DownClim/DownClim.git
 cd DownClim
-# To install in "editable" / development mode
+
+# Using conda (recommended)
+conda env create -f environment.yml
+conda activate downclim
+pip install -e .
+
+# Or using pip
 pip install -e .
 ```
 
 ## Credentials
 
-Data are retrieve from the
+### Earth Engine
+
+Some datasets (CHIRPS, GSHTD, ERA5) are hosted on Google Earth Engine. You need
+a Google Earth Engine project ID. Set it in your config:
+
+```yaml
+ee_project: "my-project-id"
+```
+
+You will be prompted to authenticate the first time you download data from Earth
+Engine.
+
+### ESGF (CORDEX only)
+
+CORDEX data are retrieved from the
 [Institut Pierre-Simon Laplace node](https://esgf-node.ipsl.upmc.fr/search/cordex-ipsl/).
 You need first to
 [create an account](https://esgf.github.io/esgf-user-support/user_guide.html#create-an-account)
@@ -70,15 +89,23 @@ on this page
 ([create account](https://esgf-node.ipsl.upmc.fr/user/add/?next=http://esgf-node.ipsl.upmc.fr/search/cordex-ipsl/)
 link at corner right).
 
-Then you’ll need to register credentials locally to use the workflow. For that
-use a credentials_esgf yaml file reported in config.yml with keys openid and
-pwd. For example using bash in linux:
+Then register credentials locally. Use a yaml file with keys `openid` and
+`password`, referenced in your config:
+
+```yaml
+esgf_credentials: "config/esgf_credential.yaml"
+```
+
+Example credential file (`config/esgf_credential.yaml`):
 
 ```bash
 openid=https://esgf-node.ipsl.upmc.fr/esgf-idp/openid/{user}
 pwd={pwd}
-echo -e "openid: $openid\npwd: $pwd" > config/credentials_esgf.yml
+echo -e "openid: $openid\npwd: $pwd" > config/esgf_credential.yaml
 ```
+
+Note: ESGF credentials are only required when using CORDEX data
+(`use_cordex: true`).
 
 ## Usage
 
@@ -88,9 +115,39 @@ for usage instructions. Start with the
 and then dive deeper in the
 [advanced usage section](https://DownClim.readthedocs.io/en/latest/advanced_usage.html).
 
+### Python API
+
+```python
+from downclim import (
+    DownClimContext,
+    define_DownClimContext_from_file,
+    generate_DownClimContext_template_file,
+)
+
+# Generate a configuration template
+generate_DownClimContext_template_file("config.yaml")
+# Edit config.yaml with your parameters, then load it:
+context = define_DownClimContext_from_file("config.yaml")
+context.download_data()
+```
+
+### Tests
+
+```bash
+conda activate downclim
+pytest -m "not network"
+```
+
 ## Configuration
 
-Very minimal set of information is needed by `DownClim` to run.
+Very minimal set of information is needed by `DownClim` to run. Generate a
+configuration template with:
+
+```bash
+python -c "from downclim import generate_DownClimContext_template_file; generate_DownClimContext_template_file('config.yaml')"
+```
+
+Then edit `config.yaml` with your parameters:
 
 - Area of interest
   - **_aoi_**: names of the area to work with, _e.g._ New-Caledonia.
@@ -146,6 +203,15 @@ and ranging from 1981 to near-present, CHIRPS incorporates our in-house
 climatology, CHPclim, 0.05° resolution satellite imagery, and in-situ station
 data to create gridded rainfall time series for trend analysis and seasonal
 drought monitoring._
+
+[**ERA5**](https://www.ecmwf.int/en/forecasts/dataset/ecmwf-reanalysis-v5)**:
+Global atmospheric reanalysis from ECMWF**
+
+_ERA5 is the fifth generation ECMWF atmospheric reanalysis of the global
+climate, covering the period from 1940 to present. It is produced by the
+Copernicus Climate Change Service (C3S) and provides hourly estimates of a large
+number of atmospheric, land and oceanic climate variables. Data is accessed via
+Google Earth Engine._
 
 [**GSHTD**](https://gee-community-catalog.org/projects/gshtd/)**: Global
 Seamless High-resolution Temperature Dataset**

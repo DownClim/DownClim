@@ -3,18 +3,27 @@ channels:
   - conda-forge
   - nodefaults
 dependencies:
-  - python>=3.11
+  - python>=3.10
   - aenum
   - dask
   - earthengine-api
   - esgf-pyclient
   - gcsfs
+  - geopandas
   - ipykernel
   - multiprocess
   - netcdf4
+  - numpy
+  - pandas
   - pydantic
   - pygadm
+  - python-slugify
   - rioxarray
-  - xesmf
+  - shapely
+  - xarray
   - xee
+  - xesmf
   - zarr
+  # test / dev deps
+  - pytest>=6
+  - pytest-cov>=3

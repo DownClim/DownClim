@@ -167,7 +167,8 @@ def get_aoi(
 
 
 def sample_aoi(aoi: gpd.GeoDataFrame, log10_eval_pts: int = 4) -> gpd.GeoDataFrame:
-    return aoi.sample_points(pow(10, log10_eval_pts))
+    pts = aoi.sample_points(pow(10, log10_eval_pts))
+    return gpd.GeoDataFrame(geometry=pts)
 
 
 def save_to_file(gdf: gpd.GeoDataFrame, filename: str) -> None:

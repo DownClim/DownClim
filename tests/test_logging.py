@@ -16,9 +16,10 @@ class TestDownClimLogging:
         """Reset configuration before each test."""
         DownClimLoggerConfig._configured = False
 
-        # Clean up existing loggers
+        # Clean up existing loggers and close handlers
         logger = logging.getLogger("downclim")
         for handler in logger.handlers[:]:
+            handler.close()
             logger.removeHandler(handler)
 
     def test_setup_logging_basic(self):
