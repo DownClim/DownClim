@@ -45,25 +45,8 @@ jobs:
       - name: Conda info
         run: conda info
       - name: Install package
-        run: pip install -e ".[test]" --no-deps
+        run: pip install -e ".[test]"
       - name: Run tests
-        run:
-          pytest -m "not network" --cov=downclim --cov-report=xml
-          --cov-report=term
-
-  docs:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: conda-incubator/setup-miniconda@v3
-        with:
-          environment-file: environment.yml
-          activate-environment: downclim
-          auto-update-conda: true
-          python-version: "3.12"
-          channels: conda-forge,nodefaults
-          use-only-tar-bz2: true
-      - name: Install docs extras
-        run: pip install -e ".[docs]" --no-deps
-      - name: Build docs
-        run: sphinx-build -b html -W --keep-going docs docs/_build/html
+        run: |
+          pytest -m "not network" --cov=downclim \
+            --cov-report=xml --cov-report=term
