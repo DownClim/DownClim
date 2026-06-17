@@ -145,7 +145,7 @@ def get_gshtd(
 
     executed_variables = []
     for var in variable:
-        if var in data_product.variables:
+        if var in data_product.variables_names:
             executed_variables.append(var)
         else:
             logger.warning(

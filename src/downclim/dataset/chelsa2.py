@@ -60,7 +60,8 @@ def _get_chelsa2_one_file(
         raise ValueError(msg)
 
     try:
-        urlopen(url)
+        with urlopen(url):
+            pass
     except URLError as e:
         msg = (
             f"Page {url} not found, please check the name of the variable or the year."
@@ -151,9 +152,10 @@ def _get_chelsa2_year_var(
             output_file = f"{tmp_directory}/{DataProduct.CHELSA.product_name}_{aoi_n}_{variable}_{year}.nc"
             paths[aoi_n] = output_file
             logger.info("Saving file %s", output_file)
-            ds_chelsa.chunk(chunks).to_netcdf(
-                output_file
-            ) if chunks else ds_chelsa.to_netcdf(output_file)
+            if chunks:
+                ds_chelsa.chunk(chunks).to_netcdf(output_file)
+            else:
+                ds_chelsa.to_netcdf(output_file)
             del ds_chelsa
     return paths
 

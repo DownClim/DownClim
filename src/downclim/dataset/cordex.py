@@ -678,7 +678,7 @@ def get_cordex(
         try:
             ds = xr.open_mfdataset(group["filename"].values, parallel=True)
             ds = prep_dataset(ds, DataProduct.CORDEX)
-        except Exception as e:
+        except (OSError, ValueError, KeyError, RuntimeError) as e:
             logger.warning("Could not process CORDEX files for %s: %s", group_name, e)
             break
         # For each aoi

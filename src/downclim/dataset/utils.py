@@ -228,8 +228,11 @@ class VariableAttributes(VariableAttributesDescription, Enum):
     """Enum Class to define the attributes of the variables in the dataset.
 
     Implementation is done var the variables handled in Downclim so far.
+
+    Members are lowercase to match CMOR variable naming conventions.
     """
 
+    # pylint: disable=invalid-name
     pr = (
         "precipitation",
         "Monthly precipitation",
@@ -381,7 +384,7 @@ def prep_dataset(ds: xr.Dataset, data_product: DataProduct) -> xr.Dataset:
     try:
         # Check the name of lon/lat coordinates.
         # Must be "lon" and "lat", otherwise, try to rename
-        if not (all(d in ds.coords for d in ("lon", "lat"))):
+        if not all(d in ds.coords for d in ("lon", "lat")):
             lon_lat_coords_names = get_lon_lat_names(
                 ds.coords, data_product.lon_lat_coords_names
             )
@@ -396,7 +399,7 @@ def prep_dataset(ds: xr.Dataset, data_product: DataProduct) -> xr.Dataset:
         raise KeyError(msg) from error
     # Normalize lon values
     if (ds.lon.max().to_numpy()) > 180:
-        ds = ds.assign_coords(lon=(((ds.lon + 180) % 360) - 180))
+        ds = ds.assign_coords(lon=((ds.lon + 180) % 360) - 180)
         ds = ds.roll(lon=int(len(ds["lon"]) / 2), roll_coords=True)
 
     return ds.rio.write_crs("epsg:4326").rio.set_spatial_dims(
