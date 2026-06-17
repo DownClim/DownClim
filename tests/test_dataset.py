@@ -7,8 +7,6 @@ from pathlib import Path
 import pytest
 
 from downclim.dataset import Aggregation, CMIP6Context, CORDEXContext
-from downclim.dataset.cmip6 import CMIP6Context as CMIP6Context_
-from downclim.dataset.cordex import CORDEXContext as CORDEXContext_
 from downclim.dataset.utils import (
     DataProduct,
     Frequency,
@@ -48,11 +46,11 @@ class TestDataProduct:
         assert DataProduct.CORDEX.url is not None
 
     def test_cmip6_context_creation(self):
-        ctx = CMIP6Context_(experiment=["historical", "ssp585"])
+        ctx = CMIP6Context(experiment=["historical", "ssp585"])
         assert ctx.experiment == ["historical", "ssp585"]
 
     def test_cordex_context_creation(self):
-        ctx = CORDEXContext_(domain=["EUR-11"])
+        ctx = CORDEXContext(domain=["EUR-11"])
         assert ctx.domain == ["EUR-11"]
 
 
