@@ -37,22 +37,21 @@ requires-python = ">=3.10"
 dependencies = [
   "aenum",
   "dask",
-  "esmpy",
-  "netcdf4",
-  "numpy",
-  "geopandas",
-  "pandas",
-  "xarray",
-  "xesmf>=0.8.7",
-  "xee",
-  "multiprocess",
+  "earthengine-api",
   "esgf-pyclient",
   "gcsfs",
-  "earthengine-api",
+  "geopandas",
+  "multiprocess",
+  "netcdf4",
+  "numpy",
+  "pandas",
   "pydantic",
-  "python-slugify",
   "pygadm",
+  "python-slugify",
   "rioxarray",
+  "shapely",
+  "xarray",
+  "xee",
   "zarr",
 ]
 
@@ -242,4 +241,16 @@ messages_control.disable = [
   "missing-module-docstring",
   "missing-function-docstring",
   "wrong-import-position",
+]
+
+[tool.conda]
+channels = ["conda-forge", "nodefaults"]
+# Dependencies that MUST come from conda-forge (no pre-built wheels on PyPI).
+# Everything else is installed via pip from [project.dependencies].
+dependencies = [
+  "python>=3.10",
+  "pip",
+  "llvmlite",
+  "numba",
+  "xesmf",
 ]

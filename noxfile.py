@@ -10,14 +10,34 @@ DIR = Path(__file__).parent.resolve()
 
 nox.needs_version = ">=2024.3.2"
 nox.options.sessions = ["lint", "pylint", "tests"]
-nox.options.default_venv_backend = "uv|virtualenv"
+
+# All sessions use conda backend — the package ships via conda only.
+nox.options.default_venv_backend = "conda"
+
+# ---------------------------------------------------------------------------
+# Conda deps — keep in sync with [tool.conda] in pyproject.toml
+# Only packages that lack pre-built wheels on PyPI.
+# ---------------------------------------------------------------------------
+CONDA_DEPS = [
+    "llvmlite",
+    "numba",
+    "xesmf",
+]
+
+
+def _install_via_conda(session: nox.Session) -> None:
+    """Install conda-only deps into the session environment."""
+    session.conda_install("--channel=conda-forge", "--yes", *CONDA_DEPS)
+
+
+# ---------------------------------------------------------------------------
+# Sessions
+# ---------------------------------------------------------------------------
 
 
 @nox.session  # type: ignore[no-untyped-decorator]
 def lint(session: nox.Session) -> None:
-    """
-    Run the linter.
-    """
+    """Run the linter (pre-commit hooks)."""
     session.install("pre-commit")
     session.run(
         "pre-commit", "run", "--all-files", "--show-diff-on-failure", *session.posargs
@@ -26,30 +46,23 @@ def lint(session: nox.Session) -> None:
 
 @nox.session  # type: ignore[no-untyped-decorator]
 def pylint(session: nox.Session) -> None:
-    """
-    Run PyLint.
-    """
-    # This needs to be installed into the package environment, and is slower
-    # than a pre-commit check
-    session.install("-e", ".", "--no-deps")
+    """Run PyLint."""
+    session.install("-e", ".")
     session.install("pylint>=3.2")
     session.run("pylint", "downclim", *session.posargs)
 
 
 @nox.session  # type: ignore[no-untyped-decorator]
 def tests(session: nox.Session) -> None:
-    """
-    Run the unit and regular tests.
-    """
-    session.install(".[test]")
+    """Run the unit and regular tests."""
+    _install_via_conda(session)
+    session.install("-e", ".[test]")
     session.run("pytest", *session.posargs)
 
 
 @nox.session(reuse_venv=True)  # type: ignore[no-untyped-decorator]
 def docs(session: nox.Session) -> None:
-    """
-    Build the docs. Pass --non-interactive to avoid serving. First positional argument is the target directory.
-    """
+    """Build the docs. Pass --non-interactive to avoid serving. First positional argument is the target directory."""
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -59,11 +72,13 @@ def docs(session: nox.Session) -> None:
     args, posargs = parser.parse_known_args(session.posargs)
     serve = args.builder == "html" and session.interactive
 
-    session.install("-e.[docs]", "sphinx-autobuild")
+    _install_via_conda(session)
+    session.install("-e", ".[docs]")
+    session.install("sphinx-autobuild")
 
     shared_args = (
-        "-n",  # nitpicky mode
-        "-T",  # full tracebacks
+        "-n",
+        "-T",
         f"-b={args.builder}",
         "docs",
         args.output or f"docs/_build/{args.builder}",
@@ -78,10 +93,7 @@ def docs(session: nox.Session) -> None:
 
 @nox.session  # type: ignore[no-untyped-decorator]
 def build_api_docs(session: nox.Session) -> None:
-    """
-    Build (regenerate) API docs.
-    """
-
+    """Build (regenerate) API docs."""
     session.install("sphinx")
     session.run(
         "sphinx-apidoc",
@@ -96,13 +108,9 @@ def build_api_docs(session: nox.Session) -> None:
 
 @nox.session  # type: ignore[no-untyped-decorator]
 def build(session: nox.Session) -> None:
-    """
-    Build an SDist and wheel.
-    """
-
+    """Build an SDist and wheel."""
     build_path = DIR.joinpath("build")
     if build_path.exists():
         shutil.rmtree(build_path)
-
     session.install("build")
     session.run("python", "-m", "build")

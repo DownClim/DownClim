@@ -1,29 +1,16 @@
+# environment.yml — conda environment definition
+# The authoritative list is in pyproject.toml under [tool.conda].
 name: downclim
 channels:
   - conda-forge
   - nodefaults
 dependencies:
+  # Conda-only packages (no pre-built wheels on PyPI)
   - python>=3.10
-  - aenum
-  - dask
-  - earthengine-api
-  - esgf-pyclient
-  - gcsfs
-  - geopandas
-  - ipykernel
-  - multiprocess
-  - netcdf4
-  - numpy
-  - pandas
-  - pydantic
-  - pygadm
-  - python-slugify
-  - rioxarray
-  - shapely
-  - xarray
-  - xee
+  - pip
+  - llvmlite
+  - numba
   - xesmf
-  - zarr
-  # test / dev deps
-  - pytest>=6
-  - pytest-cov>=3
+  # Everything else is installed via pip (the package + deps + extras)
+  - pip:
+      - -e ".[test,dev,docs]"
