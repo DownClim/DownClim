@@ -36,13 +36,11 @@ requires-python = ">=3.10"
 
 dependencies = [
   "aenum",
-  "dask",
   "earthengine-api",
   "esgf-pyclient",
   "gcsfs",
   "geopandas",
   "multiprocess",
-  "netcdf4",
   "numpy",
   "pandas",
   "pydantic",
@@ -252,5 +250,7 @@ dependencies = [
   "pip",
   "llvmlite",
   "numba",
+  "dask",
+  "netCDF4",
   "xesmf",
 ]

@@ -5,11 +5,12 @@ channels:
   - conda-forge
   - nodefaults
 dependencies:
-  # Conda-only packages (no pre-built wheels on PyPI)
   - python>=3.10
   - pip
   - llvmlite
   - numba
+  - dask
+  - netCDF4
   - xesmf
   # Everything else is installed via pip (the package + deps + extras)
   - pip:

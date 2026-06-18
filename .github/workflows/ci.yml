@@ -43,9 +43,9 @@ jobs:
           channels: conda-forge,nodefaults
           use-only-tar-bz2: true
       - name: Conda info
-        run: conda info
-      - name: Install package
-        run: pip install -e ".[test]"
+        run: |
+          conda info
+          conda list
       - name: Run tests
         run: |
           pytest -m "not network" --cov=downclim \
