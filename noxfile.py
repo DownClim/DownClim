@@ -19,8 +19,11 @@ nox.options.default_venv_backend = "conda"
 # Only packages that lack pre-built wheels on PyPI.
 # ---------------------------------------------------------------------------
 CONDA_DEPS = [
+    "earthengine-api",
     "llvmlite",
     "numba",
+    "dask",
+    "netCDF4",
     "xesmf",
 ]
 

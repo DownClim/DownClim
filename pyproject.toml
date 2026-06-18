@@ -36,7 +36,6 @@ requires-python = ">=3.10"
 
 dependencies = [
   "aenum",
-  "earthengine-api",
   "esgf-pyclient",
   "gcsfs",
   "geopandas",
@@ -95,6 +94,8 @@ xfail_strict = true
 markers = ["network: marks tests that require network access (EE, ESGF, GCS)"]
 filterwarnings = [
   "error",
+  # google.api_core emits FutureWarning
+  'ignore::FutureWarning',
   # pkg_resources/myproxy (dep of pyesgf) use deprecated APIs
   'ignore::DeprecationWarning',
 ]
@@ -248,6 +249,7 @@ channels = ["conda-forge", "nodefaults"]
 dependencies = [
   "python>=3.10",
   "pip",
+  "earthengine-api",
   "llvmlite",
   "numba",
   "dask",
