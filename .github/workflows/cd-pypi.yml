@@ -59,10 +59,19 @@ jobs:
     needs: build-artifacts
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/setup-python@v5
-        name: Install Python
+      - uses: actions/checkout@v5
+
+      - uses: conda-incubator/setup-miniconda@v3
         with:
+          channels: conda-forge,nodefaults
+          activate-environment: downclim-test
+          auto-update-conda: true
           python-version: "3.12"
+
+      - name: Install conda-only dependencies
+        shell: bash -l {0}
+        run: |
+          conda install -y earthengine-api llvmlite numba dask netcdf4 xesmf
 
       - uses: actions/download-artifact@v4
         with:
@@ -70,14 +79,14 @@ jobs:
           path: dist
 
       - name: Verify the built wheel is valid
+        shell: bash -l {0}
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install dist/downclim*.whl
-          python -c "from downclim import DownClimContext; print('Import OK')"
+          pip install dist/downclim*.whl
+          python -c "from downclim import DownClimContext; print('✅ Import OK')"
 
   upload-to-test-pypi:
     needs: test-built-dist
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
 
     environment:
