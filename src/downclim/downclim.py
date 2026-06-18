@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
+from importlib.resources import files
 from pathlib import Path
 from shutil import copyfile
 from typing import Any
 
 import geopandas as gpd
 import yaml
-from importlib_resources import files
 from pydantic import BaseModel, Field, ValidationInfo, field_validator, model_validator
 from typing_extensions import Self
 
