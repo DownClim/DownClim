@@ -63,15 +63,11 @@ jobs:
 
       - uses: conda-incubator/setup-miniconda@v3
         with:
-          channels: conda-forge,nodefaults
-          activate-environment: downclim-test
+          environment-file: environment.yml
+          activate-environment: downclim
           auto-update-conda: true
           python-version: "3.12"
-
-      - name: Install conda-only dependencies
-        shell: bash -l {0}
-        run: |
-          conda install -y earthengine-api llvmlite numba dask netcdf4 xesmf
+          channels: conda-forge,nodefaults
 
       - uses: actions/download-artifact@v4
         with:
@@ -81,8 +77,8 @@ jobs:
       - name: Verify the built wheel is valid
         shell: bash -l {0}
         run: |
-          pip install dist/downclim*.whl
-          python -c "from downclim import DownClimContext; print('✅ Import OK')"
+          pip install dist/downclim*.whl --force-reinstall --no-deps
+          python -c "from downclim import DownClimContext; print('🚀 Import OK')"
 
   upload-to-test-pypi:
     needs: test-built-dist
